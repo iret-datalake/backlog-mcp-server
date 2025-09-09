@@ -66,6 +66,13 @@ Available toolsets:
       'Enable dynamic toolsets such as enable_toolset, list_available_toolsets, etc.',
     default: env.get('ENABLE_DYNAMIC_TOOLSETS').default('false').asBool(),
   })
+  .option(
+    'project-list',{
+      type: 'array',
+      describe: 'List of project IDs to include in the search',
+      default: env.get('BACKLOG_PROJECT_LIST').default('all').asArray(','),
+    }
+  )
   .parseSync();
 
 const useFields = argv.optimizeResponse;
@@ -116,6 +123,7 @@ if (argv.exportTranslations) {
   console.log(JSON.stringify(data, null, 2));
   process.exit(0);
 }
+
 
 async function main() {
   const transport = new StdioServerTransport();

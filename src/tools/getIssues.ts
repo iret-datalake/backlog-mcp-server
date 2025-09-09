@@ -4,12 +4,14 @@ import { buildToolSchema, ToolDefinition } from '../types/tool.js';
 import { TranslationHelper } from '../createTranslationHelper.js';
 import { IssueSchema } from '../types/zod/backlogOutputDefinition.js';
 import { customFieldsToPayload } from '../backlog/customFields.js';
+import { projectList } from '../projectList.js';
 
 const getIssuesSchema = buildToolSchema((t) => ({
   projectId: z
     .array(z.number())
     .optional()
-    .describe(t('TOOL_GET_ISSUES_PROJECT_ID', 'Project IDs')),
+    .describe(t('TOOL_GET_ISSUES_PROJECT_ID', 'Project IDs'))
+    .default(projectList),
   issueTypeId: z
     .array(z.number())
     .optional()
