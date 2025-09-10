@@ -5,6 +5,7 @@ import { TranslationHelper } from '../createTranslationHelper.js';
 import { IssueSchema } from '../types/zod/backlogOutputDefinition.js';
 import { customFieldsToPayload } from '../backlog/customFields.js';
 import { projectList } from '../projectList.js';
+import { generatePermalink } from '../utils/generatePermalink.js';
 
 const getIssuesSchema = buildToolSchema((t) => ({
   projectId: z
@@ -149,12 +150,20 @@ const getIssuesSchema = buildToolSchema((t) => ({
     .describe(t('TOOL_GET_ISSUES_CUSTOM_FIELDS', 'Custom fields')),
 }));
 
+
+// Extend the Issue schema
+//    add permalink field
+
+const getIssuesToolOutputSchema = IssueSchema.extend({
+  permalink: z.string().url(),
+});
+
 export const getIssuesTool = (
   backlog: Backlog,
   { t }: TranslationHelper
 ): ToolDefinition<
   ReturnType<typeof getIssuesSchema>,
-  (typeof IssueSchema)['shape']
+  (typeof getIssuesToolOutputSchema)['shape']
 > => {
   return {
     name: 'get_issues',
@@ -168,12 +177,17 @@ export const getIssuesTool = (
       'description',
       'issueType',
     ],
-    outputSchema: IssueSchema,
+    outputSchema: getIssuesToolOutputSchema,
     handler: async ({ customFields, ...rest }) => {
-      return backlog.getIssues({
+      const result = await backlog.getIssues({
         ...rest,
         ...customFieldsToPayload(customFields),
       });
+
+      return result.map(issue => ({
+        ...issue,
+        permalink: generatePermalink('issue',issue.id),
+      }));
     },
   };
 };
