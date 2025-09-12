@@ -5,6 +5,8 @@ import { TranslationHelper } from '../createTranslationHelper.js';
 import { ProjectSchema } from '../types/zod/backlogOutputDefinition.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
+import { generatePermalink } from '../utils/generatePermalink.js';
+
 const getProjectSchema = buildToolSchema((t) => ({
   projectId: z
     .number()
@@ -26,12 +28,17 @@ const getProjectSchema = buildToolSchema((t) => ({
     ),
 }));
 
+// extend from project schema and add permalink fields
+const getProjectToolOutputSchema = ProjectSchema.extend({
+  permalink: z.string().url().describe('The permalink to the project'),
+});
+
 export const getProjectTool = (
   backlog: Backlog,
   { t }: TranslationHelper
 ): ToolDefinition<
   ReturnType<typeof getProjectSchema>,
-  (typeof ProjectSchema)['shape']
+  (typeof getProjectToolOutputSchema)['shape']
 > => {
   return {
     name: 'get_project',
@@ -40,7 +47,7 @@ export const getProjectTool = (
       'Returns information about a specific project'
     ),
     schema: z.object(getProjectSchema(t)),
-    outputSchema: ProjectSchema,
+    outputSchema: getProjectToolOutputSchema,
     handler: async ({ projectId, projectKey }) => {
       const result = resolveIdOrKey(
         'project',
@@ -50,7 +57,10 @@ export const getProjectTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.getProject(result.value);
+      return backlog.getProject(result.value).then((project) => ({
+        ...project,
+        permalink: generatePermalink('project',project.projectKey),
+      }));
     },
   };
 };
