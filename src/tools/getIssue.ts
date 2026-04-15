@@ -4,8 +4,9 @@ import { buildToolSchema, ToolDefinition } from '../types/tool.js';
 import { TranslationHelper } from '../createTranslationHelper.js';
 import { IssueSchema } from '../types/zod/backlogOutputDefinition.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
+import { generatePermalink } from '../utils/generatePermalink.js';
 
-const getIssueSchema = buildToolSchema((t) => ({
+const getIssueInputSchema = buildToolSchema((t) => ({
   issueId: z
     .number()
     .optional()
@@ -20,27 +21,53 @@ const getIssueSchema = buildToolSchema((t) => ({
     ),
 }));
 
+
+import { IssueCommentSchema } from '../types/zod/backlogOutputDefinition.js';
+
+// Extend the Issue schema
+//    add an array of comments
+//    add permalink field
+
+const getIssueToolOutputSchema = IssueSchema.extend({
+  comments: z.array(IssueCommentSchema),
+  permalink: z.string().url(),
+});
+
 export const getIssueTool = (
   backlog: Backlog,
   { t }: TranslationHelper
 ): ToolDefinition<
-  ReturnType<typeof getIssueSchema>,
-  (typeof IssueSchema)['shape']
+  ReturnType<typeof getIssueInputSchema>,
+  (typeof getIssueToolOutputSchema)['shape']
 > => {
   return {
     name: 'get_issue',
     description: t(
       'TOOL_GET_ISSUE_DESCRIPTION',
-      'Returns information about a specific issue'
+      'Returns information and comments about a specific issue'
     ),
-    outputSchema: IssueSchema,
-    schema: z.object(getIssueSchema(t)),
+    outputSchema: getIssueToolOutputSchema,
+    schema: z.object(getIssueInputSchema(t)),
     handler: async ({ issueId, issueKey }) => {
-      const result = resolveIdOrKey('issue', { id: issueId, key: issueKey }, t);
-      if (!result.ok) {
-        throw result.error;
+      const key = resolveIdOrKey('issue', { id: issueId, key: issueKey }, t);
+      if (!key.ok) {
+        throw key.error;
       }
-      return backlog.getIssue(result.value);
+
+      // Fetch the issue information
+      const issue_info = await backlog.getIssue(key.value);
+
+      // Fetch comments to compute the count
+      const comments = await backlog.getIssueComments(key.value, {});
+
+      // transform the issue info and comment to issue with comments scheme
+      const result = {
+        ...issue_info,
+        comments: comments ? comments   : [],
+        permalink: generatePermalink('issue',issue_info.id),
+      };
+
+      return result;
     },
   };
 };

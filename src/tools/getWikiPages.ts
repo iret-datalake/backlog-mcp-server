@@ -4,6 +4,7 @@ import { buildToolSchema, ToolDefinition } from '../types/tool.js';
 import { TranslationHelper } from '../createTranslationHelper.js';
 import { WikiListItemSchema } from '../types/zod/backlogOutputDefinition.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
+import { generatePermalink } from '../utils/generatePermalink.js';
 
 const getWikiPagesSchema = buildToolSchema((t) => ({
   projectId: z
@@ -32,12 +33,17 @@ const getWikiPagesSchema = buildToolSchema((t) => ({
     ),
 }));
 
+// custom output schema to add permalink field
+const getWikiPagesToolOutputSchema = WikiListItemSchema.extend({
+  permalink: z.string().url(),
+});
+
 export const getWikiPagesTool = (
   backlog: Backlog,
   { t }: TranslationHelper
 ): ToolDefinition<
   ReturnType<typeof getWikiPagesSchema>,
-  (typeof WikiListItemSchema)['shape']
+  (typeof getWikiPagesToolOutputSchema)['shape']
 > => {
   return {
     name: 'get_wiki_pages',
@@ -46,7 +52,7 @@ export const getWikiPagesTool = (
       'Returns list of Wiki pages'
     ),
     schema: z.object(getWikiPagesSchema(t)),
-    outputSchema: WikiListItemSchema,
+    outputSchema: getWikiPagesToolOutputSchema,
     importantFields: ['projectId', 'name', 'tags'],
     handler: async ({ projectId, projectKey, keyword }) => {
       const result = resolveIdOrKey(
@@ -60,7 +66,12 @@ export const getWikiPagesTool = (
       return backlog.getWikis({
         projectIdOrKey: result.value,
         keyword,
-      });
+      }).then((wikis) =>
+        wikis.map((wiki) => ({
+          ...wiki,
+          permalink: generatePermalink('wiki', wiki.id),
+        }))
+      );
     },
   };
 };
