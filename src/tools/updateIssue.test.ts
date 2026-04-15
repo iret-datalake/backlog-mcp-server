@@ -1,11 +1,11 @@
 import { updateIssueTool } from './updateIssue.js';
-import { jest, describe, it, expect } from '@jest/globals';
+import { vi, describe, it, expect } from 'vitest';
 import type { Backlog } from 'backlog-js';
 import { createTranslationHelper } from '../createTranslationHelper.js';
 
 describe('updateIssueTool', () => {
   const mockBacklog: Partial<Backlog> = {
-    patchIssue: jest.fn<() => Promise<any>>().mockResolvedValue({
+    patchIssue: vi.fn<() => Promise<any>>().mockResolvedValue({
       id: 1,
       projectId: 100,
       issueKey: 'TEST-1',
@@ -123,9 +123,9 @@ describe('updateIssueTool', () => {
       issueTypeId: 2,
       priorityId: 3,
       customFields: [
-        { id: 123, value: 'テキスト' },
+        { id: 123, value: 987 },
         { id: 456, value: 42 },
-        { id: 789, value: ['OptionA', 'OptionB'], otherValue: '詳細説明' },
+        { id: 789, value: [11, 22], otherValue: '詳細説明' },
       ],
     });
 
@@ -135,10 +135,38 @@ describe('updateIssueTool', () => {
         summary: 'Custom Field Test',
         issueTypeId: 2,
         priorityId: 3,
-        customField_123: 'テキスト',
+        customField_123: 987,
         customField_456: 42,
-        customField_789: ['OptionA', 'OptionB'],
+        customField_789: [11, 22],
         customField_789_otherValue: '詳細説明',
+      })
+    );
+  });
+
+  it('transforms multi-select customFields with numeric IDs during update', async () => {
+    await tool.handler({
+      issueKey: 'TEST-1',
+      customFields: [{ id: 555, value: [11, 22] }],
+    });
+
+    expect(mockBacklog.patchIssue).toHaveBeenCalledWith(
+      'TEST-1',
+      expect.objectContaining({
+        customField_555: [11, 22],
+      })
+    );
+  });
+
+  it('transforms customFields that provide only otherValue during update', async () => {
+    await tool.handler({
+      issueKey: 'TEST-1',
+      customFields: [{ id: 888, otherValue: '補足情報' }],
+    });
+
+    expect(mockBacklog.patchIssue).toHaveBeenCalledWith(
+      'TEST-1',
+      expect.objectContaining({
+        customField_888_otherValue: '補足情報',
       })
     );
   });

@@ -7,6 +7,7 @@ import { addProjectTool } from './addProject.js';
 import { addPullRequestTool } from './addPullRequest.js';
 import { addPullRequestCommentTool } from './addPullRequestComment.js';
 import { addWikiTool } from './addWiki.js';
+import { updateWikiTool } from './updateWiki.js';
 import { countIssuesTool } from './countIssues.js';
 import { deleteIssueTool } from './deleteIssue.js';
 import { deleteProjectTool } from './deleteProject.js';
@@ -30,9 +31,16 @@ import { getPullRequestsTool } from './getPullRequests.js';
 import { getPullRequestsCountTool } from './getPullRequestsCount.js';
 import { getResolutionsTool } from './getResolutions.js';
 import { getSpaceTool } from './getSpace.js';
+import { getSpaceActivitiesTool } from './getSpaceActivities.js';
+import { getUserStarsCountTool } from './getUserStarsCount.js';
 import { getUsersTool } from './getUsers.js';
+import { getUserRecentUpdatesTool } from './getUserRecentUpdates.js';
 import { getWatchingListCountTool } from './getWatchingListCount.js';
 import { getWatchingListItemsTool } from './getWatchingListItems.js';
+import { addWatchingTool } from './addWatching.js';
+import { updateWatchingTool } from './updateWatching.js';
+import { deleteWatchingTool } from './deleteWatching.js';
+import { markWatchingAsReadTool } from './markWatchingAsRead.js';
 import { getWikiTool } from './getWiki.js';
 import { getWikiPagesTool } from './getWikiPages.js';
 import { getWikisCountTool } from './getWikisCount.js';
@@ -49,6 +57,7 @@ import { getVersionMilestoneListTool } from './getVersionMilestoneList.js';
 import { addVersionMilestoneTool } from './addVersionMilestone.js';
 import { updateVersionMilestoneTool } from './updateVersionMilestone.js';
 import { deleteVersionTool } from './deleteVersion.js';
+import { addDocumentTool } from './addDocument.js';
 
 export const allTools = (
   backlog: Backlog,
@@ -63,8 +72,11 @@ export const allTools = (
         enabled: false,
         tools: [
           getSpaceTool(backlog, helper),
+          getSpaceActivitiesTool(backlog, helper),
           getUsersTool(backlog, helper),
+          getUserStarsCountTool(backlog, helper),
           getMyselfTool(backlog, helper),
+          getUserRecentUpdatesTool(backlog, helper),
         ],
       },
       {
@@ -100,6 +112,10 @@ export const allTools = (
           getResolutionsTool(backlog, helper),
           getWatchingListItemsTool(backlog, helper),
           getWatchingListCountTool(backlog, helper),
+          addWatchingTool(backlog, helper),
+          updateWatchingTool(backlog, helper),
+          deleteWatchingTool(backlog, helper),
+          markWatchingAsReadTool(backlog, helper),
           getVersionMilestoneListTool(backlog, helper),
           addVersionMilestoneTool(backlog, helper),
           updateVersionMilestoneTool(backlog, helper),
@@ -115,6 +131,7 @@ export const allTools = (
           getWikisCountTool(backlog, helper),
           getWikiTool(backlog, helper),
           addWikiTool(backlog, helper),
+          updateWikiTool(backlog, helper),
         ],
       },
       {
@@ -142,6 +159,7 @@ export const allTools = (
           getDocumentsTool(backlog, helper),
           getDocumentTreeTool(backlog, helper),
           getDocumentTool(backlog, helper),
+          addDocumentTool(backlog, helper),
         ],
       },
       {

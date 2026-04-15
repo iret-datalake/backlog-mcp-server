@@ -4,7 +4,7 @@
 ![Build](https://github.com/nulab/backlog-mcp-server/actions/workflows/ci.yml/badge.svg)
 ![Last Commit](https://img.shields.io/github/last-commit/nulab/backlog-mcp-server.svg)
 
-[📘 日本語でのご利用ガイド](./README.ja.md) 
+[📘 日本語でのご利用ガイド](./README.ja.md)
 
 A Model Context Protocol (MCP) server for interacting with the Backlog API. This server provides tools for managing projects, issues, wiki pages, and more in Backlog through AI agents like Claude Desktop / Cline / Cursor etc.
 
@@ -42,11 +42,14 @@ The easiest way to use this MCP server is through MCP configurations:
       "command": "docker",
       "args": [
         "run",
-        "--pull", "always",
+        "--pull",
+        "always",
         "-i",
         "--rm",
-        "-e", "BACKLOG_DOMAIN",
-        "-e", "BACKLOG_API_KEY",
+        "-e",
+        "BACKLOG_DOMAIN",
+        "-e",
+        "BACKLOG_API_KEY",
         "ghcr.io/nulab/backlog-mcp-server"
       ],
       "env": {
@@ -79,9 +82,7 @@ You can also run the server directly using `npx` without cloning the repository.
   "mcpServers": {
     "backlog": {
       "command": "npx",
-      "args": [
-        "backlog-mcp-server"
-      ],
+      "args": ["backlog-mcp-server"],
       "env": {
         "BACKLOG_DOMAIN": "your-domain.backlog.com",
         "BACKLOG_API_KEY": "your-api-key"
@@ -96,6 +97,7 @@ Replace `your-domain.backlog.com` with your Backlog domain and `your-api-key` wi
 ### Option 3: Manual Setup (Node.js)
 
 1. Clone and install:
+
    ```bash
    git clone https://github.com/nulab/backlog-mcp-server.git
    cd backlog-mcp-server
@@ -103,23 +105,39 @@ Replace `your-domain.backlog.com` with your Backlog domain and `your-api-key` wi
    npm run build
    ```
 
-2. Set your json to use as MCP
-  ```json
-  {
-    "mcpServers": {
-      "backlog": {
-        "command": "node",
-        "args": [
-          "your-repository-location/build/index.js"
-        ],
-        "env": {
-          "BACKLOG_DOMAIN": "your-domain.backlog.com",
-          "BACKLOG_API_KEY": "your-api-key"
-        }
+2. Create `.env` from template and set required variables:
+
+```bash
+cp .env.example .env
+```
+
+Set the following values in `.env`:
+
+- `BACKLOG_DOMAIN=your-domain.backlog.com`
+- `BACKLOG_API_KEY=your-api-key`
+
+3. Run locally:
+
+```bash
+npm run dev
+```
+
+4. Set your json to use as MCP
+
+```json
+{
+  "mcpServers": {
+    "backlog": {
+      "command": "node",
+      "args": ["your-repository-location/build/index.js"],
+      "env": {
+        "BACKLOG_DOMAIN": "your-domain.backlog.com",
+        "BACKLOG_API_KEY": "your-api-key"
       }
     }
   }
-  ```
+}
+```
 
 ## Tool Configuration
 
@@ -129,15 +147,15 @@ You can selectively enable or disable specific **toolsets** using the `--enable-
 
 The following toolsets are available (enabled by default when `"all"` is used):
 
-| Toolset         | Description                                                                          |
-|-----------------|--------------------------------------------------------------------------------------|
-| `space`         | Tools for managing Backlog space settings and general information                   |
-| `project`       | Tools for managing projects, categories, custom fields, and issue types              |
-| `issue`         | Tools for managing issues and their comments, version milestones                    |
-| `wiki`          | Tools for managing wiki pages                                                        |
-| `git`           | Tools for managing Git repositories and pull requests                                |
-| `notifications` | Tools for managing user notifications                                                |
-| `document`      | Tools for viewing documents and document trees                   |
+| Toolset         | Description                                                             |
+| --------------- | ----------------------------------------------------------------------- |
+| `space`         | Tools for managing Backlog space settings and general information       |
+| `project`       | Tools for managing projects, categories, custom fields, and issue types |
+| `issue`         | Tools for managing issues and their comments, version milestones        |
+| `wiki`          | Tools for managing wiki pages                                           |
+| `git`           | Tools for managing Git repositories and pull requests                   |
+| `notifications` | Tools for managing user notifications                                   |
+| `document`      | Tools for viewing documents and document trees                          |
 
 ### Specifying Toolsets
 
@@ -182,13 +200,17 @@ With dynamic toolsets enabled, the LLM will be able to list and activate toolset
 ## Available Tools
 
 ### Toolset: `space`
+
 Tools for managing Backlog space settings and general information.
+
 - `get_space`: Returns information about the Backlog space.
 - `get_users`: Returns list of users in the Backlog space.
 - `get_myself`: Returns information about the authenticated user.
 
 ### Toolset: `project`
+
 Tools for managing projects, categories, custom fields, and issue types.
+
 - `get_project_list`: Returns list of projects.
 - `add_project`: Creates a new project.
 - `get_project`: Returns information about a specific project.
@@ -196,7 +218,9 @@ Tools for managing projects, categories, custom fields, and issue types.
 - `delete_project`: Deletes a project.
 
 ### Toolset: `issue`
+
 Tools for managing issues, their comments, and related items like priorities, categories, custom fields, issue types, resolutions, and watching lists.
+
 - `get_issue`: Returns information about a specific issue.
 - `get_issues`: Returns list of issues.
 - `count_issues`: Returns count of issues.
@@ -212,20 +236,28 @@ Tools for managing issues, their comments, and related items like priorities, ca
 - `get_resolutions`: Returns list of issue resolutions.
 - `get_watching_list_items`: Returns list of watching items for a user.
 - `get_watching_list_count`: Returns count of watching items for a user.
+- `add_watching`: Adds a new watch to an issue.
+- `update_watching`: Updates an existing watch note.
+- `delete_watching`: Deletes a watch from an issue.
+- `mark_watching_as_read`: Marks a watch as read.
 - `get_version_milestone_list`: Returns list of version milestones for a project.
 - `add_version_milestone`: Creates a new version milestone for a project.
 - `update_version_milestone`: Updates an existing version milestone.
 - `delete_version_milestone`: Deletes a version milestone.
 
 ### Toolset: `wiki`
+
 Tools for managing wiki pages.
+
 - `get_wiki_pages`: Returns list of Wiki pages.
 - `get_wikis_count`: Returns count of wiki pages in a project.
 - `get_wiki`: Returns information about a specific wiki page.
 - `add_wiki`: Creates a new wiki page.
 
 ### Toolset: `git`
+
 Tools for managing Git repositories and pull requests.
+
 - `get_git_repositories`: Returns list of Git repositories for a project.
 - `get_git_repository`: Returns information about a specific Git repository.
 - `get_pull_requests`: Returns list of pull requests for a repository.
@@ -238,14 +270,18 @@ Tools for managing Git repositories and pull requests.
 - `update_pull_request_comment`: Updates a comment on a pull request.
 
 ### Toolset: `notifications`
+
 Tools for managing user notifications.
+
 - `get_notifications`: Returns list of notifications.
 - `get_notifications_count`: Returns count of notifications.
 - `reset_unread_notification_count`: Resets unread notification count.
 - `mark_notification_as_read`: Marks a notification as read.
 
 ### Toolset: `document`
+
 Tools for managing documents and document trees in Backlog projects.
+
 - `get_document_tree`: Returns the hierarchical tree of documents for a project, including folders and ne
 - `get_documents`: Returns a flat list of documents in a project or folder.
 - `get_document`: Returns detailed information about a specific document, including metadata, content, an
@@ -255,31 +291,43 @@ Tools for managing documents and document trees in Backlog projects.
 Once the MCP server is configured in AI agents, you can use the tools directly in your conversations. Here are some examples:
 
 - Listing Projects
+
 ```
 Could you list all my Backlog projects?
 ```
+
 - Creating a New Issue
+
 ```
 Create a new bug issue in the PROJECT-KEY project with high priority titled "Fix login page error"
 ```
+
 - Getting Project Details
+
 ```
 Show me the details of the PROJECT-KEY project
 ```
+
 - Working with Git Repositories
+
 ```
 List all Git repositories in the PROJECT-KEY project
 ```
+
 - Managing Pull Requests
+
 ```
 Show me all open pull requests in the repository "repo-name" of PROJECT-KEY project
 ```
+
 ```
 Create a new pull request from branch "feature/new-feature" to "main" in the repository "repo-name" of PROJECT-KEY project
 ```
+
 - Watching Items
+
 ```
-Show me all items I'm watching 
+Show me all items I'm watching
 ```
 
 ### i18n / Overriding Descriptions
@@ -302,7 +350,7 @@ When the server starts, it determines the final description for each tool based 
 2. Entries in `.backlog-mcp-serverrc.json` - Supported configuration file formats: .json, .yaml, .yml
 3. Built-in fallback values (English)
 
-Sample config: 
+Sample config:
 
 ```json
 {
@@ -313,9 +361,12 @@ Sample config:
         "run",
         "-i",
         "--rm",
-        "-e", "BACKLOG_DOMAIN",
-        "-e", "BACKLOG_API_KEY",
-        "-v", "/yourcurrentdir/.backlog-mcp-serverrc.json:/root/.backlog-mcp-serverrc.json:ro",
+        "-e",
+        "BACKLOG_DOMAIN",
+        "-e",
+        "BACKLOG_API_KEY",
+        "-v",
+        "/yourcurrentdir/.backlog-mcp-serverrc.json:/root/.backlog-mcp-serverrc.json:ro",
         "ghcr.io/nulab/backlog-mcp-server"
       ],
       "env": {
@@ -339,13 +390,14 @@ Example:
 docker run -i --rm ghcr.io/nulab/backlog-mcp-server node build/index.js --export-translations
 ```
 
-or 
+or
 
 ```bash
 npx github:nulab/backlog-mcp-server --export-translations
 ```
 
 ### Using a Japanese Translation Template
+
 A sample Japanese configuration file is provided at:
 
 ```bash
@@ -357,9 +409,10 @@ To use it, copy it to your home directory as .backlog-mcp-serverrc.json:
 You can then edit the file to customize the descriptions as needed.
 
 ### Using Environment Variables
+
 Alternatively, you can override tool descriptions via environment variables.
 
-The environment variable names are based on the tool keys, prefixed with BACKLOG_MCP_ and written in uppercase.
+The environment variable names are based on the tool keys, prefixed with BACKLOG*MCP* and written in uppercase.
 
 Example:
 To override the TOOL_ADD_ISSUE_COMMENT_DESCRIPTION:
@@ -437,6 +490,7 @@ get_project(projectIdOrKey: "PROJECT-KEY", fields: "{ name key description }")
 ```
 
 Benefits:
+
 - Reduce response size by requesting only needed fields
 - Focus on specific data points
 - Improve performance for large responses
@@ -444,6 +498,7 @@ Benefits:
 #### Token Limiting
 
 Large responses are automatically limited to prevent exceeding token limits:
+
 - Default limit: 50,000 tokens
 - Configurable via `MAX_TOKENS` environment variable
 - Responses exceeding the limit are truncated with a message
@@ -455,6 +510,7 @@ MAX_TOKENS=10000
 ```
 
 If a response exceeds the limit, it will be truncated with a warning.
+
 > Note: This is a best-effort mitigation, not a guaranteed enforcement.
 
 ### Full Custom Configuration Example
@@ -470,12 +526,18 @@ This section demonstrates advanced configuration using multiple environment vari
         "run",
         "-i",
         "--rm",
-        "-e", "BACKLOG_DOMAIN",
-        "-e", "BACKLOG_API_KEY",
-        "-e", "MAX_TOKENS",
-        "-e", "OPTIMIZE_RESPONSE",
-        "-e", "PREFIX",
-        "-e", "ENABLE_TOOLSETS",
+        "-e",
+        "BACKLOG_DOMAIN",
+        "-e",
+        "BACKLOG_API_KEY",
+        "-e",
+        "MAX_TOKENS",
+        "-e",
+        "OPTIMIZE_RESPONSE",
+        "-e",
+        "PREFIX",
+        "-e",
+        "ENABLE_TOOLSETS",
         "ghcr.io/nulab/backlog-mcp-server"
       ],
       "env": {
@@ -520,9 +582,93 @@ The server supports several command line options:
   Available toolsets: `space`, `project`, `issue`, `wiki`, `git`, `notifications`.
 
 Example:
+
 ```bash
 node build/index.js --optimize-response --max-tokens=100000 --prefix="backlog_" --enable-toolsets space,issue
 ```
+
+## Multi-Organization Support
+
+This server can be configured to access multiple Backlog organizations from a single MCP server instance.
+
+### Configuration
+
+Configure one env pair per organization and set a default organization:
+
+```bash
+BACKLOG_DEFAULT_ORG=COMPANY_A
+BACKLOG_ORG_COMPANY_A_DOMAIN=company-a.backlog.com
+BACKLOG_ORG_COMPANY_A_API_KEY=your-company-a-api-key
+BACKLOG_ORG_COMPANY_B_DOMAIN=company-b.backlog.com
+BACKLOG_ORG_COMPANY_B_API_KEY=your-company-b-api-key
+```
+
+This works whether the variables come from a local `.env`, your shell environment, or an MCP client config `env` block.
+
+Example MCP config:
+
+```json
+{
+  "env": {
+    "BACKLOG_DEFAULT_ORG": "COMPANY_A",
+    "BACKLOG_ORG_COMPANY_A_DOMAIN": "company-a.backlog.com",
+    "BACKLOG_ORG_COMPANY_A_API_KEY": "your-company-a-api-key",
+    "BACKLOG_ORG_COMPANY_B_DOMAIN": "company-b.backlog.com",
+    "BACKLOG_ORG_COMPANY_B_API_KEY": "your-company-b-api-key"
+  }
+}
+```
+
+If no multi-organization env vars are set, the server falls back to the existing single-organization configuration:
+
+```bash
+BACKLOG_DOMAIN=your-domain.backlog.com
+BACKLOG_API_KEY=your-api-key
+```
+
+### Tool Usage
+
+All normal tools accept an optional `organization` input field. When provided, the tool call is routed to that Backlog organization.
+
+Examples:
+
+```json
+{
+  "organization": "COMPANY_B",
+  "projectKey": "PROJECT"
+}
+```
+
+If `organization` is omitted:
+
+- the organization named by `BACKLOG_DEFAULT_ORG` is used
+- if multi-organization env vars are present and `BACKLOG_DEFAULT_ORG` is missing, the server fails at startup
+
+### Organization Discovery
+
+The server provides a `list_organizations` tool that returns the configured organization names, their domains, and which one is the default.
+
+Example response:
+
+```json
+[
+  {
+    "name": "COMPANY_A",
+    "domain": "company-a.backlog.com",
+    "isDefault": true
+  },
+  {
+    "name": "COMPANY_B",
+    "domain": "company-b.backlog.com",
+    "isDefault": false
+  }
+]
+```
+
+### Notes
+
+- For multi-org mode, every organization must define both `BACKLOG_ORG_<NAME>_DOMAIN` and `BACKLOG_ORG_<NAME>_API_KEY`.
+- The `<NAME>` part is the organization name exposed through the `organization` tool input and `list_organizations`.
 
 ## License
 
