@@ -1,6 +1,3 @@
-/**
- * Converts a BacklogError (or unknown error) into Output format for MCP response
- */
 type MaybeBacklogErrorObject = {
   _name?: string;
   _status?: number;
@@ -26,7 +23,19 @@ export type ParsedBacklogAPIError = {
   url?: string;
 };
 
-export function parseBacklogAPIError(err: unknown): ParsedBacklogAPIError {
+// Decides only the wording of an auth failure: in OAuth mode there is no API key to check.
+export type BacklogAuthMode = 'apiKey' | 'oauth';
+
+const authErrorMessage = (status: number, authMode: BacklogAuthMode): string =>
+  authMode === 'oauth'
+    ? `Authentication failed (HTTP ${status}). The Backlog access token was rejected. Re-authenticate with Backlog, or check that your account has permission for this resource.`
+    : `Authentication failed (HTTP ${status}). Please check your API key or permissions.`;
+
+export function parseBacklogAPIError(
+  err: unknown,
+  options: { authMode?: BacklogAuthMode } = {}
+): ParsedBacklogAPIError {
+  const { authMode = 'apiKey' } = options;
   const e = err as MaybeBacklogErrorObject;
 
   if (e._name && e._status && e._url) {
@@ -39,7 +48,7 @@ export function parseBacklogAPIError(err: unknown): ParsedBacklogAPIError {
     if (e._name === 'BacklogAuthError') {
       return {
         type: 'BacklogAuthError',
-        message: `Authentication failed (HTTP ${status}). Please check your API key or permissions.`,
+        message: authErrorMessage(status, authMode),
         status,
         url,
       };

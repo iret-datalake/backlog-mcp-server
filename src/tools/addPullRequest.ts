@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { postPullRequest } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { PullRequestSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey, resolveIdOrName } from '../utils/resolveIdOrKey.js';
 
 const addPullRequestSchema = buildToolSchema((t) => ({
@@ -67,11 +69,11 @@ const addPullRequestSchema = buildToolSchema((t) => ({
 }));
 
 export const addPullRequestTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof addPullRequestSchema>,
-  (typeof PullRequestSchema)['shape']
+  Entity.PullRequest.PullRequest
 > => {
   return {
     name: 'add_pull_request',
@@ -80,7 +82,31 @@ export const addPullRequestTool = (
       'Creates a new pull request'
     ),
     schema: z.object(addPullRequestSchema(t)),
-    outputSchema: PullRequestSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.PullRequest.PullRequest>()([
+      'id',
+      'projectId',
+      'repositoryId',
+      'number',
+      'summary',
+      'description',
+      'base',
+      'branch',
+      'status',
+      'assignee',
+      'issue',
+      'baseCommit',
+      'branchCommit',
+      'mergeCommit',
+      'closeAt',
+      'mergeAt',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+      'attachments',
+      'stars',
+    ]),
     handler: async ({ projectId, projectKey, repoId, repoName, ...params }) => {
       const result = resolveIdOrKey(
         'project',
@@ -98,7 +124,8 @@ export const addPullRequestTool = (
       if (!repoRes.ok) {
         throw repoRes.error;
       }
-      return backlog.postPullRequest(
+      return postPullRequest(
+        backlog,
         result.value,
         String(repoRes.value),
         params

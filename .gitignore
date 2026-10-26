@@ -51,4 +51,6 @@ coverage/
 tmp/
 temp/
 
-src/version.ts
+# MCPB bundle
+*.mcpb
+.vitest/

@@ -1,0 +1,29 @@
+# pnpm reads only auth and registry settings from `.npmrc`; everything else
+# belongs here. `minimum-release-age` happened to work from there in 10.34.4
+# and `minimum-release-age-exclude` did not, which left the delay on with its
+# exemption silently off.
+minimumReleaseAge: 4320
+
+# backlog-js is maintained in-house (nulab/backlog-js), so the delay that
+# guards against compromised third-party releases only slows us down here.
+minimumReleaseAgeExclude:
+  - backlog-js
+
+# Written by `vp migrate`: Vite+ ships its own vite build, and the overrides
+# make every package that asks for vite or vitest resolve to the versions
+# vite-plus was built against.
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.0.0
+  vitest: 5.0.5
+  vite-plus: 1.3.0
+  '@vitest/coverage-v8': 5.0.5
+overrides:
+  vite@*: 'catalog:'
+  vitest@*: 'catalog:'
+peerDependencyRules:
+  allowAny:
+    - vite
+    - vitest
+  allowedVersions:
+    vite: '*'
+    vitest: '*'

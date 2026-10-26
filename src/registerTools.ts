@@ -1,22 +1,31 @@
+import { z } from 'zod';
 import { backlogErrorHandler } from './backlog/backlogErrorHandler.js';
+import { composeNativeContentToolHandler } from './handlers/builders/composeNativeContentToolHandler.js';
 import { composeToolHandler } from './handlers/builders/composeToolHandler.js';
 import { MCPOptions } from './types/mcp.js';
-import { DynamicToolDefinition, ToolDefinition } from './types/tool.js';
-import { DynamicToolsetGroup, ToolsetGroup } from './types/toolsets.js';
+import { ToolsetGroup } from './types/toolsets.js';
+import { toolAnnotationsFor } from './utils/toolAnnotations.js';
 import { BacklogMCPServer } from './utils/wrapServerWithToolRegistry.js';
 
-type ToolsetSource = ToolsetGroup | DynamicToolsetGroup;
+type RegistrableTool = {
+  name: string;
+  description: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  schema: z.ZodObject<any>;
+};
 
-type RegisterOptions = {
+type RegisterOptions<TTool extends RegistrableTool> = {
   server: BacklogMCPServer;
-  toolsetGroup: ToolsetSource;
+  toolsets: { enabled: boolean; tools: TTool[] }[];
   prefix: string;
-  onlyEnabled?: boolean;
-  handlerStrategy: (
+  // Returns the schema rather than mutating the definition: one toolset group
+  // is shared across per-request servers.
+  prepareTool: (tool: TTool) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tool: ToolDefinition<any, any> | DynamicToolDefinition<any>
+    schema: z.ZodObject<any>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ) => (...args: any[]) => any;
+    handler: (...args: any[]) => any;
+  };
 };
 
 export function registerTools(
@@ -24,55 +33,61 @@ export function registerTools(
   toolsetGroup: ToolsetGroup,
   options: MCPOptions
 ) {
-  const { useFields, maxTokens, prefix } = options;
+  const { useFields, maxTokens, prefix, useOrganization } = options;
 
   registerToolsets({
     server,
-    toolsetGroup,
+    toolsets: toolsetGroup.toolsets,
     prefix,
-    handlerStrategy: (tool) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      composeToolHandler(tool as ToolDefinition<any, any>, {
+    prepareTool: (tool) =>
+      composeToolHandler(tool, {
         useFields,
         errorHandler: backlogErrorHandler,
         maxTokens,
+        useOrganization,
+      }),
+  });
+
+  // Tools that build their own result, registered from the same toolsets so
+  // that `--enable-toolsets` and the prefix cover them too.
+  registerToolsets({
+    server,
+    toolsets: toolsetGroup.toolsets.map((toolset) => ({
+      enabled: toolset.enabled,
+      tools: toolset.nativeContentTools ?? [],
+    })),
+    prefix,
+    prepareTool: (tool) =>
+      composeNativeContentToolHandler(tool, {
+        errorHandler: backlogErrorHandler,
+        useOrganization,
       }),
   });
 }
 
-export function registerDynamicTools(
-  server: BacklogMCPServer,
-  dynamicToolsetGroup: DynamicToolsetGroup,
-  prefix: string
-) {
-  registerToolsets({
-    server,
-    toolsetGroup: dynamicToolsetGroup,
-    prefix,
-    handlerStrategy: (tool) => tool.handler,
-  });
-}
-
-function registerToolsets({
+function registerToolsets<TTool extends RegistrableTool>({
   server,
-  toolsetGroup,
+  toolsets,
   prefix,
-  handlerStrategy,
-}: RegisterOptions) {
-  for (const toolset of toolsetGroup.toolsets) {
+  prepareTool,
+}: RegisterOptions<TTool>) {
+  for (const toolset of toolsets) {
     if (!toolset.enabled) {
       continue;
     }
 
     for (const tool of toolset.tools) {
       const toolNameWithPrefix = `${prefix}${tool.name}`;
-      const handler = handlerStrategy(tool);
+      const { schema, handler } = prepareTool(tool);
 
       server.registerOnce(
         toolNameWithPrefix,
         tool.description,
-        tool.schema.shape,
-        handler
+        schema,
+        handler,
+        // Derived from the bare name, so that `--prefix` cannot change what a
+        // client is told the tool does.
+        toolAnnotationsFor(tool.name)
       );
     }
   }

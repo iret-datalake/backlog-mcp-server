@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getPullRequests } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { PullRequestSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey, resolveIdOrName } from '../utils/resolveIdOrKey.js';
 
 const getPullRequestsSchema = buildToolSchema((t) => ({
@@ -61,11 +63,11 @@ const getPullRequestsSchema = buildToolSchema((t) => ({
 }));
 
 export const getPullRequestsTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getPullRequestsSchema>,
-  (typeof PullRequestSchema)['shape']
+  Entity.PullRequest.PullRequest
 > => {
   return {
     name: 'get_pull_requests',
@@ -74,7 +76,31 @@ export const getPullRequestsTool = (
       'Returns list of pull requests for a repository'
     ),
     schema: z.object(getPullRequestsSchema(t)),
-    outputSchema: PullRequestSchema,
+    returnsList: true,
+    outputFields: outputFields<Entity.PullRequest.PullRequest>()([
+      'id',
+      'projectId',
+      'repositoryId',
+      'number',
+      'summary',
+      'description',
+      'base',
+      'branch',
+      'status',
+      'assignee',
+      'issue',
+      'baseCommit',
+      'branchCommit',
+      'mergeCommit',
+      'closeAt',
+      'mergeAt',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+      'attachments',
+      'stars',
+    ]),
     handler: async ({ projectId, projectKey, repoId, repoName, ...params }) => {
       const result = resolveIdOrKey(
         'project',
@@ -92,7 +118,8 @@ export const getPullRequestsTool = (
       if (!repoResult.ok) {
         throw repoResult.error;
       }
-      return backlog.getPullRequests(
+      return getPullRequests(
+        backlog,
         result.value,
         String(repoResult.value),
         params

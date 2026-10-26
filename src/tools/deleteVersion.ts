@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { deleteVersions } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { VersionSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
 const deleteVersionSchema = buildToolSchema((t) => ({
@@ -35,11 +37,11 @@ const deleteVersionSchema = buildToolSchema((t) => ({
 }));
 
 export const deleteVersionTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof deleteVersionSchema>,
-  (typeof VersionSchema)['shape']
+  Entity.Project.Version
 > => {
   return {
     name: 'delete_version',
@@ -48,7 +50,17 @@ export const deleteVersionTool = (
       'Deletes a version from a project'
     ),
     schema: z.object(deleteVersionSchema(t)),
-    outputSchema: VersionSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Project.Version>()([
+      'id',
+      'projectId',
+      'name',
+      'description',
+      'startDate',
+      'releaseDueDate',
+      'archived',
+      'displayOrder',
+    ]),
     handler: async ({ projectId, projectKey, id }) => {
       const result = resolveIdOrKey(
         'project',
@@ -63,7 +75,7 @@ export const deleteVersionTool = (
           t('TOOL_DELETE_VERSION_MISSING_ID', 'Version ID is required')
         );
       }
-      return backlog.deleteVersions(result.value, id);
+      return deleteVersions(backlog, result.value, id);
     },
   };
 };

@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getVersions } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { VersionSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
 const getVersionMilestoneListSchema = buildToolSchema((t) => ({
@@ -27,11 +29,11 @@ const getVersionMilestoneListSchema = buildToolSchema((t) => ({
 }));
 
 export const getVersionMilestoneListTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getVersionMilestoneListSchema>,
-  (typeof VersionSchema)['shape']
+  Entity.Project.Version
 > => {
   return {
     name: 'get_version_milestone_list',
@@ -40,7 +42,17 @@ export const getVersionMilestoneListTool = (
       'Returns list of versions/milestones in the Backlog space'
     ),
     schema: z.object(getVersionMilestoneListSchema(t)),
-    outputSchema: VersionSchema,
+    returnsList: true,
+    outputFields: outputFields<Entity.Project.Version>()([
+      'id',
+      'projectId',
+      'name',
+      'description',
+      'startDate',
+      'releaseDueDate',
+      'archived',
+      'displayOrder',
+    ]),
     importantFields: [
       'id',
       'name',
@@ -58,7 +70,7 @@ export const getVersionMilestoneListTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.getVersions(result.value);
+      return getVersions(backlog, result.value);
     },
   };
 };

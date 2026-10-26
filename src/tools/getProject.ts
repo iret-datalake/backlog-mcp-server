@@ -1,11 +1,14 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getProject } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { ProjectSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
-
 import { generatePermalink } from '../utils/generatePermalink.js';
+
+type ProjectWithPermalink = Entity.Project.Project & { permalink: string };
 
 const getProjectSchema = buildToolSchema((t) => ({
   projectId: z
@@ -28,17 +31,12 @@ const getProjectSchema = buildToolSchema((t) => ({
     ),
 }));
 
-// extend from project schema and add permalink fields
-const getProjectToolOutputSchema = ProjectSchema.extend({
-  permalink: z.string().url().describe('The permalink to the project'),
-});
-
 export const getProjectTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getProjectSchema>,
-  (typeof getProjectToolOutputSchema)['shape']
+  ProjectWithPermalink
 > => {
   return {
     name: 'get_project',
@@ -47,7 +45,28 @@ export const getProjectTool = (
       'Returns information about a specific project'
     ),
     schema: z.object(getProjectSchema(t)),
-    outputSchema: getProjectToolOutputSchema,
+    returnsList: false,
+    outputFields: outputFields<ProjectWithPermalink>()([
+      'id',
+      'projectKey',
+      'name',
+      'chartEnabled',
+      'useResolvedForChart',
+      'subtaskingEnabled',
+      'projectLeaderCanEditProjectLeader',
+      'useWiki',
+      'useFileSharing',
+      'useWikiTreeView',
+      'useOriginalImageSizeAtWiki',
+      'useSubversion',
+      'useGit',
+      'textFormattingRule',
+      'archived',
+      'displayOrder',
+      'useDevAttributes',
+      'grandchildIssueEnabled',
+      'permalink',
+    ]),
     handler: async ({ projectId, projectKey }) => {
       const result = resolveIdOrKey(
         'project',
@@ -57,10 +76,11 @@ export const getProjectTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.getProject(result.value).then((project) => ({
+      const project = await getProject(backlog, result.value);
+      return {
         ...project,
-        permalink: generatePermalink('project',project.projectKey),
-      }));
+        permalink: generatePermalink('project', project.projectKey),
+      };
     },
   };
 };

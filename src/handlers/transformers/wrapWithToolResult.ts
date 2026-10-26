@@ -1,20 +1,9 @@
-import { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
-import {
-  CallToolResult,
-  ServerNotification,
-  ServerRequest,
-} from '@modelcontextprotocol/sdk/types.js';
+import { CallToolResult, ServerContext } from '@modelcontextprotocol/server';
 import { isErrorLike, SafeResult } from '../../types/result.js';
 
-/**
- * Convert SafeResult<T> to CallToolResult
- */
 export function wrapWithToolResult<I, T>(
   fn: (input: I) => Promise<SafeResult<string | T>>
-): (
-  input: I,
-  extra: RequestHandlerExtra<ServerRequest, ServerNotification>
-) => Promise<CallToolResult> {
+): (input: I, extra: ServerContext) => Promise<CallToolResult> {
   return async (input: I, _extra) => {
     const result = await fn(input);
 
@@ -47,7 +36,7 @@ export function wrapWithToolResult<I, T>(
       content: [
         {
           type: 'text',
-          text: JSON.stringify(data, null, 2),
+          text: JSON.stringify(data),
         },
       ],
     };

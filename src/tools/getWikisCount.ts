@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getWikisCount } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { WikiCountSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
 const getWikisCountSchema = buildToolSchema((t) => ({
@@ -27,11 +29,11 @@ const getWikisCountSchema = buildToolSchema((t) => ({
 }));
 
 export const getWikisCountTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getWikisCountSchema>,
-  (typeof WikiCountSchema)['shape']
+  Entity.Wiki.WikiCount
 > => {
   return {
     name: 'get_wikis_count',
@@ -40,7 +42,8 @@ export const getWikisCountTool = (
       'Returns count of wiki pages in a project'
     ),
     schema: z.object(getWikisCountSchema(t)),
-    outputSchema: WikiCountSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Wiki.WikiCount>()(['count']),
     handler: async ({ projectId, projectKey }) => {
       const result = resolveIdOrKey(
         'project',
@@ -50,7 +53,7 @@ export const getWikisCountTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.getWikisCount(result.value);
+      return getWikisCount(backlog, result.value);
     },
   };
 };

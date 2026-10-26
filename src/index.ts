@@ -1,28 +1,101 @@
 #!/usr/bin/env node
-// Copyright (c) 2025 Nulab inc.
-// Licensed under the MIT License.
-
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import dotenv from 'dotenv';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { default as env } from 'env-var';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { createTranslationHelper } from './createTranslationHelper.js';
-import { registerDynamicTools, registerTools } from './registerTools.js';
-import { organizationTools } from './tools/dynamicTools/organizations.js';
-import { dynamicTools } from './tools/dynamicTools/toolsets.js';
-import { createBacklogClientRegistry } from './utils/backlogClientRegistry.js';
+import { getBacklogOAuthConfig } from './auth/backlogOAuthConfig.js';
+import { createTokenStore } from './auth/tokenStore.js';
+import { createDescriptionHelper } from './createDescriptionHelper.js';
+import { loadDescriptionOverrides } from './loadDescriptionOverrides.js';
+import { createBacklogMcpServer } from './createBacklogMcpServer.js';
+import { runHttpMcpServer } from './httpMcpServer.js';
+import { reportUnknownOverrideKeys } from './reportUnknownOverrideKeys.js';
+import {
+  createBacklogClientRegistry,
+  createOAuthBacklogClientRegistry,
+} from './utils/backlogClientRegistry.js';
 import { logger } from './utils/logger.js';
-import { createToolRegistrar } from './utils/toolRegistrar.js';
 import { buildToolsetGroup } from './utils/toolsetUtils.js';
-import { wrapServerWithToolRegistry } from './utils/wrapServerWithToolRegistry.js';
 import packageJson from '../package.json' with { type: 'json' };
+
 const { version } = packageJson;
 
-dotenv.config();
+// Swallow SIGPIPE and stdout/stderr EPIPE so the process doesn't crash when a
+// client disconnects mid-stream. Node.js emits EPIPE as both a Unix signal and
+// as an error event on stdout/stderr streams — both must be handled.
+process.on('SIGPIPE', () => {});
+process.stdout.on('error', (err) => {
+  if (!('code' in err) || err.code !== 'EPIPE') throw err;
+});
+process.stderr.on('error', (err) => {
+  if (!('code' in err) || err.code !== 'EPIPE') throw err;
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error({ err: error }, 'Uncaught exception');
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'Unhandled rejection');
+  process.exit(1);
+});
+
+try {
+  process.loadEnvFile();
+} catch {
+  // .env file is optional
+}
+
+const oauthConfig = getBacklogOAuthConfig();
+const accessTokenPassthrough =
+  !oauthConfig &&
+  env.get('BACKLOG_ACCESS_TOKEN_PASSTHROUGH').default('false').asBool();
 
 const argv = yargs(hideBin(process.argv))
+  .option('transport', {
+    type: 'string',
+    choices: ['stdio', 'http'] as const,
+    describe: 'MCP transport: stdio (default) or Streamable HTTP',
+    default:
+      env.get('MCP_TRANSPORT').default('stdio').asString().toLowerCase() ===
+      'http'
+        ? 'http'
+        : 'stdio',
+  })
+  .option('http-host', {
+    type: 'string',
+    describe: 'Host to bind for HTTP transport',
+    default: env.get('MCP_HTTP_HOST').default('127.0.0.1').asString(),
+  })
+  .option('http-port', {
+    type: 'number',
+    describe: 'Port for HTTP transport',
+    default: env.get('MCP_HTTP_PORT').default(3333).asPortNumber(),
+  })
+  .option('http-path', {
+    type: 'string',
+    describe: 'URL path for MCP endpoint (must start with /)',
+    default: env.get('MCP_HTTP_PATH').default('/mcp').asString(),
+  })
+  .option('http-json-response', {
+    type: 'boolean',
+    describe:
+      'Prefer JSON responses over SSE streams when supported (Streamable HTTP)',
+    default: env.get('MCP_HTTP_JSON_RESPONSE').default('false').asBool(),
+  })
+  .option('http-allowed-hosts', {
+    type: 'string',
+    describe:
+      'Comma-separated allowed Host header values when binding to all interfaces (recommended with 0.0.0.0)',
+    default: env.get('MCP_HTTP_ALLOWED_HOSTS').default('').asString(),
+  })
+  .option('http-allowed-origins', {
+    type: 'string',
+    describe:
+      'Comma-separated allowed Origin header hostnames for browser-based clients. Defaults to the localhost set on a loopback bind, and to no Origin check otherwise',
+    default: env.get('MCP_HTTP_ALLOWED_ORIGINS').default('').asString(),
+  })
   .option('max-tokens', {
     type: 'number',
     describe: 'Maximum number of tokens allowed in the response',
@@ -39,9 +112,12 @@ const argv = yargs(hideBin(process.argv))
     describe: 'Optional string prefix to prepend to all generated outputs',
     default: env.get('PREFIX').default('').asString(),
   })
-  .option('export-translations', {
+  .option('export-descriptions', {
     type: 'boolean',
-    describe: 'Export translations and exit',
+    // Deprecated alias. yargs ignores unknown flags, so dropping it would not fail loudly:
+    // the process would start a server and the caller would see a hang.
+    alias: 'export-translations',
+    describe: 'Export tool and parameter descriptions and exit',
     default: false,
   })
   .option('enable-toolsets', {
@@ -56,79 +132,180 @@ Available toolsets:
   - notifications: Tools for managing user notifications`,
     default: env.get('ENABLE_TOOLSETS').default('all').asArray(','),
   })
-  .option('dynamic-toolsets', {
-    type: 'boolean',
-    describe:
-      'Enable dynamic toolsets such as enable_toolset, list_available_toolsets, etc.',
-    default: env.get('ENABLE_DYNAMIC_TOOLSETS').default('false').asBool(),
+  .option('project-list', {
+    type: 'array',
+    describe: 'List of project IDs to include in the search',
+    default: env.get('BACKLOG_PROJECT_LIST').default('all').asArray(','),
   })
-  .option(
-    'project-list',{
-      type: 'array',
-      describe: 'List of project IDs to include in the search',
-      default: env.get('BACKLOG_PROJECT_LIST').default('all').asArray(','),
-    }
-  )
   .parseSync();
 
-const clientRegistry = createBacklogClientRegistry();
+// Only the raw arguments show which spelling was typed. Written to stderr directly: `logger`
+// drops anything below `error` in production, and stdout carries the JSON-RPC stream.
+if (
+  hideBin(process.argv).some(
+    (arg) => arg.split('=')[0] === '--export-translations'
+  )
+) {
+  process.stderr.write(
+    '--export-translations is deprecated and will be removed in a future release. Use --export-descriptions.\n'
+  );
+}
+
+const clientRegistry = oauthConfig
+  ? createOAuthBacklogClientRegistry(oauthConfig.backlogDomain)
+  : accessTokenPassthrough
+    ? createOAuthBacklogClientRegistry(
+        env.get('BACKLOG_DOMAIN').required().asString()
+      )
+    : createBacklogClientRegistry();
 const backlog = clientRegistry.createScopedClient();
+
+const tokenStore = oauthConfig ? createTokenStore() : undefined;
+let cleanupTimer: ReturnType<typeof setInterval> | undefined;
+if (tokenStore) {
+  cleanupTimer = setInterval(() => tokenStore.cleanup(), 5 * 60 * 1000);
+  cleanupTimer.unref();
+}
 
 const useFields = argv.optimizeResponse;
 
-const server = wrapServerWithToolRegistry(
-  new McpServer({
-    name: 'backlog',
-    title: useFields ? 'backlog (field selection enabled)' : 'backlog',
-    version,
-  })
-);
-
-const transHelper = createTranslationHelper();
+const descriptionOverrides = loadDescriptionOverrides();
+const descriptionHelper = createDescriptionHelper(descriptionOverrides);
 
 const maxTokens = argv.maxTokens;
 const prefix = argv.prefix;
-let enabledToolsets = argv.enableToolsets as string[];
+const enabledToolsets = argv.enableToolsets as string[];
 
-// If dynamic toolsets are enabled, remove "all" to allow for selective enabling via commands
-if (argv.dynamicToolsets) {
-  enabledToolsets = enabledToolsets.filter((a) => a != 'all');
-}
+const mcpOption = {
+  useFields: useFields,
+  maxTokens,
+  prefix,
+  useOrganization: clientRegistry.isMultiOrganization,
+};
 
-const mcpOption = { useFields: useFields, maxTokens, prefix };
-const toolsetGroup = buildToolsetGroup(backlog, transHelper, enabledToolsets);
-
-// Register all tools
-registerTools(server, toolsetGroup, mcpOption);
-registerDynamicTools(
-  server,
-  organizationTools(clientRegistry, transHelper),
-  prefix
+// Shared by every server the factory produces so the tool tree is not rebuilt per request.
+const sharedToolsetGroup = buildToolsetGroup(
+  backlog,
+  descriptionHelper,
+  enabledToolsets
 );
 
-// Register dynamic tool management tools if enabled
-if (argv.dynamicToolsets) {
-  const registrar = createToolRegistrar(server, toolsetGroup, mcpOption);
-  const dynamicToolsetGroup = dynamicTools(
-    registrar,
-    transHelper,
-    toolsetGroup
-  );
+reportUnknownOverrideKeys({
+  overrides: descriptionOverrides,
+  version,
+  backlog,
+  clientRegistry,
+  mcpOption,
+});
 
-  registerDynamicTools(server, dynamicToolsetGroup, prefix);
-}
+const createServer = () =>
+  createBacklogMcpServer({
+    version,
+    useFields,
+    backlog,
+    clientRegistry,
+    descriptionHelper,
+    enabledToolsets,
+    mcpOption,
+    toolsetGroup: sharedToolsetGroup,
+  });
 
-if (argv.exportTranslations) {
-  const data = transHelper.dump();
+if (argv.exportDescriptions) {
+  // Description keys are recorded only once a tool is created, so build a server with
+  // every toolset enabled first or the dump is empty.
+  createBacklogMcpServer({
+    version,
+    useFields,
+    backlog,
+    clientRegistry,
+    descriptionHelper,
+    enabledToolsets: ['all'],
+    mcpOption,
+  });
+  const data = descriptionHelper.dump();
   // eslint-disable-next-line no-console
   console.log(JSON.stringify(data, null, 2));
   process.exit(0);
 }
 
+function normalizeHttpPath(p: string): string {
+  if (!p.startsWith('/')) {
+    return `/${p}`;
+  }
+  return p;
+}
 
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  if (oauthConfig && argv.transport === 'stdio') {
+    logger.warn(
+      'OAuth is configured but transport is stdio. OAuth is only available with HTTP transport.'
+    );
+  }
+  if (accessTokenPassthrough && argv.transport === 'stdio') {
+    throw new Error(
+      'BACKLOG_ACCESS_TOKEN_PASSTHROUGH requires the HTTP transport (--transport http).'
+    );
+  }
+
+  if (argv.transport === 'http') {
+    const httpPath = normalizeHttpPath(argv.httpPath);
+    const parseHostList = (raw?: string): string[] | undefined =>
+      raw && raw.trim().length > 0
+        ? raw
+            .split(',')
+            .map((h) => h.trim())
+            .filter(Boolean)
+        : undefined;
+
+    const allowedHosts = parseHostList(argv.httpAllowedHosts);
+    const allowedOrigins = parseHostList(argv.httpAllowedOrigins);
+
+    const { shutdown } = await runHttpMcpServer({
+      host: argv.httpHost,
+      port: argv.httpPort,
+      path: httpPath,
+      version,
+      enableJsonResponse: argv.httpJsonResponse,
+      allowedHosts,
+      allowedOrigins,
+      createServer,
+      oauthConfig,
+      tokenStore,
+      accessTokenPassthrough,
+    });
+
+    process.once('SIGINT', () => {
+      void shutdown()
+        .catch((err) => logger.error({ err }, 'Error during shutdown'))
+        .finally(() => process.exit(0));
+    });
+    process.once('SIGTERM', () => {
+      void shutdown()
+        .catch((err) => logger.error({ err }, 'Error during shutdown'))
+        .finally(() => process.exit(0));
+    });
+
+    logger.info(
+      {
+        transport: 'http',
+        host: argv.httpHost,
+        port: argv.httpPort,
+        path: httpPath,
+        oauth: !!oauthConfig,
+        accessTokenPassthrough,
+      },
+      oauthConfig
+        ? 'Backlog MCP Server listening (Streamable HTTP + OAuth)'
+        : 'Backlog MCP Server listening (Streamable HTTP)'
+    );
+    return;
+  }
+
+  // serveStdio owns the era decision for the connection: it pins one instance
+  // from the factory, serving both 2026-07-28 and 2025-era clients.
+  serveStdio(createServer, {
+    onerror: (err) => logger.error({ err }, 'MCP stdio error'),
+  });
   logger.info('Backlog MCP Server running on stdio');
 }
 

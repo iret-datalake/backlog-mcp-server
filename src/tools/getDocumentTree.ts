@@ -1,11 +1,10 @@
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getDocumentTree } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { z } from 'zod';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import {
-  DocumentTreeFullSchema,
-  DocumentTreeFullSchemaZ,
-} from '../types/zod/backlogOutputDefinition.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
+import { outputFields } from '../types/outputFields.js';
 
 const getDocumentTreeSchema = buildToolSchema((t) => ({
   projectIdOrKey: z
@@ -16,11 +15,11 @@ const getDocumentTreeSchema = buildToolSchema((t) => ({
 }));
 
 export const getDocumentTreeTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getDocumentTreeSchema>,
-  typeof DocumentTreeFullSchema
+  Entity.Document.DocumentTree
 > => {
   return {
     name: 'get_document_tree',
@@ -29,10 +28,15 @@ export const getDocumentTreeTool = (
       'Gets the document tree of a project.'
     ),
     schema: z.object(getDocumentTreeSchema(t)),
-    outputSchema: DocumentTreeFullSchemaZ,
+    returnsList: false,
+    outputFields: outputFields<Entity.Document.DocumentTree>()([
+      'projectId',
+      'activeTree',
+      'trashTree',
+    ]),
     importantFields: ['projectId', 'activeTree', 'trashTree'],
     handler: async ({ projectIdOrKey }) => {
-      return backlog.getDocumentTree(projectIdOrKey);
+      return getDocumentTree(backlog, projectIdOrKey);
     },
   };
 };

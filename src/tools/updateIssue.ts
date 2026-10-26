@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import { Option, patchIssue } from 'backlog-js';
+import type { Client } from 'backlog-js';
+import type { Entity } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { IssueSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 import { customFieldsToPayload } from '../backlog/customFields.js';
 
@@ -66,15 +68,30 @@ const updateIssueSchema = buildToolSchema((t) => ({
   categoryId: z
     .array(z.number())
     .optional()
-    .describe(t('TOOL_UPDATE_ISSUE_CATEGORY_ID', 'Category IDs')),
+    .describe(
+      t(
+        'TOOL_UPDATE_ISSUE_CATEGORY_ID',
+        'Category IDs. Pass an empty array to clear all categories. Omit this field to leave the current categories unchanged.'
+      )
+    ),
   versionId: z
     .array(z.number())
     .optional()
-    .describe(t('TOOL_UPDATE_ISSUE_VERSION_ID', 'Version IDs')),
+    .describe(
+      t(
+        'TOOL_UPDATE_ISSUE_VERSION_ID',
+        'Version IDs. Pass an empty array to clear all versions. Omit this field to leave the current versions unchanged.'
+      )
+    ),
   milestoneId: z
     .array(z.number())
     .optional()
-    .describe(t('TOOL_UPDATE_ISSUE_MILESTONE_ID', 'Milestone IDs')),
+    .describe(
+      t(
+        'TOOL_UPDATE_ISSUE_MILESTONE_ID',
+        'Milestone IDs. Pass an empty array to clear all milestones. Omit this field to leave the current milestones unchanged.'
+      )
+    ),
   statusId: z
     .number()
     .optional()
@@ -95,6 +112,16 @@ const updateIssueSchema = buildToolSchema((t) => ({
     .array(z.number())
     .optional()
     .describe(t('TOOL_UPDATE_ISSUE_ATTACHMENT_ID', 'Attachment IDs')),
+  parentIssueId: z
+    .number()
+    .nullable()
+    .optional()
+    .describe(
+      t(
+        'TOOL_UPDATE_ISSUE_PARENT_ISSUE_ID',
+        'Parent issue ID. Pass null to remove the current parent issue. Omit to leave it unchanged.'
+      )
+    ),
   comment: z
     .string()
     .optional()
@@ -113,10 +140,18 @@ const updateIssueSchema = buildToolSchema((t) => ({
             )
           ),
         value: z
-          .union([z.number(), z.array(z.number())])
+          .union([
+            z.string(),
+            z.number(),
+            z.array(z.string()),
+            z.array(z.number()),
+          ])
           .optional()
           .describe(
-            'The ID(s) of the custom field item. For single-select fields, provide a number. For multi-select fields, provide an array of numbers representing the selected item IDs.'
+            t(
+              'TOOL_UPDATE_ISSUE_CUSTOM_FIELD_VALUE',
+              'Value of the custom field. For text/date fields, provide a string. For numeric fields, provide a number. For list fields, provide an array of strings or numbers.'
+            )
           ),
         otherValue: z
           .string()
@@ -138,13 +173,37 @@ const updateIssueSchema = buildToolSchema((t) => ({
     ),
 }));
 
+// Backlog clears an array field only on `field[]=`, but qs emits nothing for `[]`,
+// so `[]` becomes `['']`. notifiedUserId/attachmentId are one-off actions, so excluded.
+const CLEARABLE_ARRAY_FIELDS = [
+  'categoryId',
+  'versionId',
+  'milestoneId',
+] as const;
+
+type ClearableArrayField = (typeof CLEARABLE_ARRAY_FIELDS)[number];
+
+type WithClearedArrayFields<T> = Omit<T, ClearableArrayField> & {
+  [K in ClearableArrayField]?: T[K & keyof T] | [''];
+};
+
+const clearEmptyArrayFields = <T extends Record<string, unknown>>(
+  params: T
+): WithClearedArrayFields<T> => {
+  const next: Record<string, unknown> = { ...params };
+  for (const field of CLEARABLE_ARRAY_FIELDS) {
+    const value = next[field];
+    if (Array.isArray(value) && value.length === 0) {
+      next[field] = [''];
+    }
+  }
+  return next as WithClearedArrayFields<T>;
+};
+
 export const updateIssueTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
-): ToolDefinition<
-  ReturnType<typeof updateIssueSchema>,
-  (typeof IssueSchema)['shape']
-> => {
+  backlog: Client,
+  { t }: DescriptionHelper
+): ToolDefinition<ReturnType<typeof updateIssueSchema>, Entity.Issue.Issue> => {
   return {
     name: 'update_issue',
     description: t(
@@ -152,7 +211,37 @@ export const updateIssueTool = (
       'Updates an existing issue'
     ),
     schema: z.object(updateIssueSchema(t)),
-    outputSchema: IssueSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Issue.Issue>()([
+      'id',
+      'projectId',
+      'issueKey',
+      'keyId',
+      'issueType',
+      'summary',
+      'description',
+      'resolution',
+      'priority',
+      'status',
+      'assignee',
+      'category',
+      'versions',
+      'milestone',
+      'startDate',
+      'dueDate',
+      'estimatedHours',
+      'actualHours',
+      'parentIssueId',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+      'customFields',
+      'attachments',
+      'sharedFiles',
+      'stars',
+      'childIssueSummary',
+    ]),
     handler: async ({ issueId, issueKey, customFields, ...params }) => {
       const result = resolveIdOrKey('issue', { id: issueId, key: issueKey }, t);
       if (!result.ok) {
@@ -161,10 +250,17 @@ export const updateIssueTool = (
       const customFieldPayload = customFieldsToPayload(customFields);
 
       const finalPayload = {
-        ...params,
+        ...clearEmptyArrayFields(params),
+        ...(params.parentIssueId === null ? { parentIssueId: '' } : {}),
         ...customFieldPayload,
       };
-      return backlog.patchIssue(result.value, finalPayload);
+      // An explicit null parentIssueId becomes an empty value, which Backlog treats as "clear".
+      // The `['']` sentinel does not fit backlog-js's `number[]` types, hence the cast.
+      return patchIssue(
+        backlog,
+        result.value,
+        finalPayload as Option.Issue.PatchIssueParams
+      );
     },
   };
 };

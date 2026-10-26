@@ -1,9 +1,13 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getWiki } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { WikiSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { generatePermalink } from '../utils/generatePermalink.js';
+
+type WikiWithPermalink = Entity.Wiki.Wiki & { permalink: string };
 
 const getWikiSchema = buildToolSchema((t) => ({
   wikiId: z
@@ -11,18 +15,10 @@ const getWikiSchema = buildToolSchema((t) => ({
     .describe(t('TOOL_GET_WIKI_ID', 'Wiki ID')),
 }));
 
-// custom output schema to add permalink field
-const getWikiToolOutputSchema = WikiSchema.extend({
-  permalink: z.string().url(),
-});
-
 export const getWikiTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
-): ToolDefinition<
-  ReturnType<typeof getWikiSchema>,
-  (typeof getWikiToolOutputSchema)['shape']
-> => {
+  backlog: Client,
+  { t }: DescriptionHelper
+): ToolDefinition<ReturnType<typeof getWikiSchema>, WikiWithPermalink> => {
   return {
     name: 'get_wiki',
     description: t(
@@ -30,15 +26,28 @@ export const getWikiTool = (
       'Returns information about a specific wiki page'
     ),
     schema: z.object(getWikiSchema(t)),
-    outputSchema: getWikiToolOutputSchema,
+    returnsList: false,
+    outputFields: outputFields<WikiWithPermalink>()([
+      'id',
+      'projectId',
+      'name',
+      'content',
+      'tags',
+      'attachments',
+      'sharedFiles',
+      'stars',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+      'permalink',
+    ]),
     importantFields: ['id', 'projectId', 'name', 'content'],
     handler: async ({ wikiId }) => {
       const wikiIdNumber =
         typeof wikiId === 'string' ? parseInt(wikiId, 10) : wikiId;
-      return backlog.getWiki(wikiIdNumber).then((wiki) => ({
-        ...wiki,
-        permalink: generatePermalink('wiki', wiki.id),
-      }));
+      const wiki = await getWiki(backlog, wikiIdNumber);
+      return { ...wiki, permalink: generatePermalink('wiki', wiki.id) };
     },
   };
 };

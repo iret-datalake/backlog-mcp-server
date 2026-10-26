@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { patchProject } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { ProjectSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
 const updateProjectSchema = buildToolSchema((t) => ({
@@ -69,11 +71,11 @@ const updateProjectSchema = buildToolSchema((t) => ({
 }));
 
 export const updateProjectTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof updateProjectSchema>,
-  (typeof ProjectSchema)['shape']
+  Entity.Project.Project
 > => {
   return {
     name: 'update_project',
@@ -82,7 +84,27 @@ export const updateProjectTool = (
       'Updates an existing project'
     ),
     schema: z.object(updateProjectSchema(t)),
-    outputSchema: ProjectSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Project.Project>()([
+      'id',
+      'projectKey',
+      'name',
+      'chartEnabled',
+      'useResolvedForChart',
+      'subtaskingEnabled',
+      'projectLeaderCanEditProjectLeader',
+      'useWiki',
+      'useFileSharing',
+      'useWikiTreeView',
+      'useOriginalImageSizeAtWiki',
+      'useSubversion',
+      'useGit',
+      'textFormattingRule',
+      'archived',
+      'displayOrder',
+      'useDevAttributes',
+      'grandchildIssueEnabled',
+    ]),
     handler: async ({ projectId, projectKey, ...param }) => {
       const result = resolveIdOrKey(
         'project',
@@ -92,7 +114,7 @@ export const updateProjectTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.patchProject(result.value, param);
+      return patchProject(backlog, result.value, param);
     },
   };
 };
