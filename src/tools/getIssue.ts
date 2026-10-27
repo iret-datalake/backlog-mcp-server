@@ -1,12 +1,20 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getIssue, getIssueComments } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { IssueSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 import { generatePermalink } from '../utils/generatePermalink.js';
 
-const getIssueInputSchema = buildToolSchema((t) => ({
+// The issue together with its comments and a link to it.
+type IssueWithComments = Entity.Issue.Issue & {
+  comments: Entity.Issue.Comment[];
+  permalink: string;
+};
+
+const getIssueSchema = buildToolSchema((t) => ({
   issueId: z
     .number()
     .optional()
@@ -21,53 +29,64 @@ const getIssueInputSchema = buildToolSchema((t) => ({
     ),
 }));
 
-
-import { IssueCommentSchema } from '../types/zod/backlogOutputDefinition.js';
-
-// Extend the Issue schema
-//    add an array of comments
-//    add permalink field
-
-const getIssueToolOutputSchema = IssueSchema.extend({
-  comments: z.array(IssueCommentSchema),
-  permalink: z.string().url(),
-});
-
 export const getIssueTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
-): ToolDefinition<
-  ReturnType<typeof getIssueInputSchema>,
-  (typeof getIssueToolOutputSchema)['shape']
-> => {
+  backlog: Client,
+  { t }: DescriptionHelper
+): ToolDefinition<ReturnType<typeof getIssueSchema>, IssueWithComments> => {
   return {
     name: 'get_issue',
     description: t(
       'TOOL_GET_ISSUE_DESCRIPTION',
       'Returns information and comments about a specific issue'
     ),
-    outputSchema: getIssueToolOutputSchema,
-    schema: z.object(getIssueInputSchema(t)),
+    returnsList: false,
+    outputFields: outputFields<IssueWithComments>()([
+      'id',
+      'projectId',
+      'issueKey',
+      'keyId',
+      'issueType',
+      'summary',
+      'description',
+      'resolution',
+      'priority',
+      'status',
+      'assignee',
+      'category',
+      'versions',
+      'milestone',
+      'startDate',
+      'dueDate',
+      'estimatedHours',
+      'actualHours',
+      'parentIssueId',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+      'customFields',
+      'attachments',
+      'sharedFiles',
+      'stars',
+      'childIssueSummary',
+      'comments',
+      'permalink',
+    ]),
+    schema: z.object(getIssueSchema(t)),
     handler: async ({ issueId, issueKey }) => {
-      const key = resolveIdOrKey('issue', { id: issueId, key: issueKey }, t);
-      if (!key.ok) {
-        throw key.error;
+      const result = resolveIdOrKey('issue', { id: issueId, key: issueKey }, t);
+      if (!result.ok) {
+        throw result.error;
       }
-
-      // Fetch the issue information
-      const issue_info = await backlog.getIssue(key.value);
-
-      // Fetch comments to compute the count
-      const comments = await backlog.getIssueComments(key.value, {});
-
-      // transform the issue info and comment to issue with comments scheme
-      const result = {
-        ...issue_info,
-        comments: comments ? comments   : [],
-        permalink: generatePermalink('issue',issue_info.id),
+      const [issue, comments] = await Promise.all([
+        getIssue(backlog, result.value),
+        getIssueComments(backlog, result.value, {}),
+      ]);
+      return {
+        ...issue,
+        comments: comments ?? [],
+        permalink: generatePermalink('issue', issue.id),
       };
-
-      return result;
     },
   };
 };

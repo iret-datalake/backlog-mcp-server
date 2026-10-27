@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getIssuesCount } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { IssueCountSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { customFieldFiltersToPayload } from '../backlog/customFields.js';
 import { buildCustomFieldFilterSchema } from './shared/customFieldFiltersSchema.js';
 
@@ -117,19 +119,20 @@ const countIssuesSchema = buildToolSchema((t) => ({
 }));
 
 export const countIssuesTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof countIssuesSchema>,
-  (typeof IssueCountSchema)['shape']
+  Entity.Issue.IssueCount
 > => {
   return {
     name: 'count_issues',
     description: t('TOOL_COUNT_ISSUES_DESCRIPTION', 'Returns count of issues'),
     schema: z.object(countIssuesSchema(t)),
-    outputSchema: IssueCountSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Issue.IssueCount>()(['count']),
     handler: async ({ customFields, ...rest }) => {
-      return backlog.getIssuesCount({
+      return getIssuesCount(backlog, {
         ...rest,
         ...customFieldFiltersToPayload(customFields),
       });

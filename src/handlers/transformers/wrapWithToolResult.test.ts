@@ -1,16 +1,9 @@
 import { wrapWithToolResult } from './wrapWithToolResult.js';
-import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
-import {
-  ServerNotification,
-  ServerRequest,
-} from '@modelcontextprotocol/sdk/types.js';
-import { describe, it, expect } from 'vitest';
+import { ServerContext } from '@modelcontextprotocol/server';
+import { describe, it, expect } from 'vite-plus/test';
 
 describe('wrapWithToolResult', () => {
-  const dummyExtra = {} as RequestHandlerExtra<
-    ServerRequest,
-    ServerNotification
-  >;
+  const dummyExtra = {} as ServerContext;
 
   it('returns error result when SafeResult is error', async () => {
     const fn = async () =>
@@ -54,7 +47,7 @@ describe('wrapWithToolResult', () => {
       content: [
         {
           type: 'text',
-          text: JSON.stringify({ id: 1, name: 'Test' }, null, 2),
+          text: JSON.stringify({ id: 1, name: 'Test' }),
         },
       ],
     });

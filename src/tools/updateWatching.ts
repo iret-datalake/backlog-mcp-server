@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { patchWatchingListItem } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { WatchingListItemSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const updateWatchingSchema = buildToolSchema((t) => ({
   watchId: z.number().describe(t('TOOL_UPDATE_WATCHING_WATCH_ID', 'Watch ID')),
@@ -12,11 +14,11 @@ const updateWatchingSchema = buildToolSchema((t) => ({
 }));
 
 export const updateWatchingTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof updateWatchingSchema>,
-  (typeof WatchingListItemSchema)['shape']
+  Entity.WatchingList.WatchingListItem
 > => {
   return {
     name: 'update_watching',
@@ -25,8 +27,18 @@ export const updateWatchingTool = (
       'Updates an existing watch note'
     ),
     schema: z.object(updateWatchingSchema(t)),
-    outputSchema: WatchingListItemSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.WatchingList.WatchingListItem>()([
+      'id',
+      'resourceAlreadyRead',
+      'note',
+      'type',
+      'issue',
+      'lastContentUpdated',
+      'created',
+      'updated',
+    ]),
     handler: async ({ watchId, note }) =>
-      backlog.patchWatchingListItem(watchId, note),
+      patchWatchingListItem(backlog, watchId, note),
   };
 };

@@ -1,17 +1,19 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getPriorities } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { PrioritySchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const getPrioritiesSchema = buildToolSchema((_t) => ({}));
 
 export const getPrioritiesTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getPrioritiesSchema>,
-  (typeof PrioritySchema)['shape']
+  Entity.Issue.Priority
 > => {
   return {
     name: 'get_priorities',
@@ -20,7 +22,8 @@ export const getPrioritiesTool = (
       'Returns list of priorities'
     ),
     schema: z.object(getPrioritiesSchema(t)),
-    outputSchema: PrioritySchema,
-    handler: async () => backlog.getPriorities(),
+    returnsList: true,
+    outputFields: outputFields<Entity.Issue.Priority>()(['id', 'name']),
+    handler: async () => getPriorities(backlog),
   };
 };

@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getCategories } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { CategorySchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
 const getCategoriesSchema = buildToolSchema((t) => ({
@@ -27,11 +29,11 @@ const getCategoriesSchema = buildToolSchema((t) => ({
 }));
 
 export const getCategoriesTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getCategoriesSchema>,
-  (typeof CategorySchema)['shape']
+  Entity.Project.Category
 > => {
   return {
     name: 'get_categories',
@@ -41,7 +43,13 @@ export const getCategoriesTool = (
     ),
     schema: z.object(getCategoriesSchema(t)),
     importantFields: ['id', 'projectId', 'name'],
-    outputSchema: CategorySchema,
+    returnsList: true,
+    outputFields: outputFields<Entity.Project.Category>()([
+      'id',
+      'projectId',
+      'name',
+      'displayOrder',
+    ]),
     handler: async ({ projectId, projectKey }) => {
       const result = resolveIdOrKey(
         'project',
@@ -51,7 +59,7 @@ export const getCategoriesTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.getCategories(result.value);
+      return getCategories(backlog, result.value);
     },
   };
 };

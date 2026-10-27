@@ -1,8 +1,10 @@
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getCustomFields } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { z } from 'zod';
 import { ToolDefinition, buildToolSchema } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { CustomFieldSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
 const getCustomFieldsInputSchema = buildToolSchema((t) => ({
@@ -27,11 +29,11 @@ const getCustomFieldsInputSchema = buildToolSchema((t) => ({
 }));
 
 export const getCustomFieldsTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getCustomFieldsInputSchema>, // Shape for input schema
-  (typeof CustomFieldSchema)['shape'] // Shape for output schema (single item)
+  Entity.Project.CustomField
 > => {
   const inputSchemaObject = z.object(getCustomFieldsInputSchema(t)); // Create the ZodObject for input
 
@@ -42,7 +44,27 @@ export const getCustomFieldsTool = (
       'Returns list of custom fields for a project'
     ),
     schema: inputSchemaObject,
-    outputSchema: CustomFieldSchema,
+    returnsList: true,
+    outputFields: outputFields<Entity.Project.CustomField>()([
+      'id',
+      'projectId',
+      'typeId',
+      'name',
+      'description',
+      'required',
+      'useIssueType',
+      'applicableIssueTypes',
+      'displayOrder',
+      'version',
+      'min',
+      'max',
+      'initialValue',
+      'unit',
+      'initialDate',
+      'items',
+      'allowAddItem',
+      'allowInput',
+    ]),
     importantFields: [
       'id',
       'name',
@@ -59,7 +81,7 @@ export const getCustomFieldsTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.getCustomFields(result.value);
+      return getCustomFields(backlog, result.value);
     },
   };
 };

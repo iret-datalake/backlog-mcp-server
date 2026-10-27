@@ -1,4 +1,4 @@
-import { DynamicToolDefinition, ToolDefinition } from './tool.js';
+import { NativeContentToolDefinition, ToolDefinition } from './tool.js';
 
 type BaseToolset<TTool> = {
   name: string;
@@ -8,9 +8,9 @@ type BaseToolset<TTool> = {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Toolset = BaseToolset<ToolDefinition<any, any>>;
+export type Toolset = BaseToolset<ToolDefinition<any, any>> & {
+  // Kept apart from `tools`: binary results must bypass field picking and the token limit.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  nativeContentTools?: NativeContentToolDefinition<any>[];
+};
 export type ToolsetGroup = { toolsets: Toolset[] };
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type DynamicToolset = BaseToolset<DynamicToolDefinition<any>>;
-export type DynamicToolsetGroup = { toolsets: DynamicToolset[] };

@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getGitRepositories } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { GitRepositorySchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
 const getGitRepositoriesSchema = buildToolSchema((t) => ({
@@ -27,11 +29,11 @@ const getGitRepositoriesSchema = buildToolSchema((t) => ({
 }));
 
 export const getGitRepositoriesTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getGitRepositoriesSchema>,
-  (typeof GitRepositorySchema)['shape']
+  Entity.Git.GitRepository
 > => {
   return {
     name: 'get_git_repositories',
@@ -40,7 +42,22 @@ export const getGitRepositoriesTool = (
       'Returns list of Git repositories for a project'
     ),
     schema: z.object(getGitRepositoriesSchema(t)),
-    outputSchema: GitRepositorySchema,
+    returnsList: true,
+    outputFields: outputFields<Entity.Git.GitRepository>()([
+      'id',
+      'projectId',
+      'name',
+      'description',
+      'hookUrl',
+      'httpUrl',
+      'sshUrl',
+      'displayOrder',
+      'pushedAt',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+    ]),
     handler: async ({ projectId, projectKey }) => {
       const result = resolveIdOrKey(
         'project',
@@ -50,7 +67,7 @@ export const getGitRepositoriesTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.getGitRepositories(result.value);
+      return getGitRepositories(backlog, result.value);
     },
   };
 };

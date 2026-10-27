@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getUserActivities } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import {
-  ActivitySchema,
-  ActivityTypeSchema,
-} from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { ActivityTypeSchema } from '../types/zod/activityType.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const getUserRecentUpdatesSchema = buildToolSchema((t) => ({
   userId: z
@@ -58,11 +58,11 @@ const getUserRecentUpdatesSchema = buildToolSchema((t) => ({
 }));
 
 export const getUserRecentUpdatesTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getUserRecentUpdatesSchema>,
-  (typeof ActivitySchema)['shape']
+  Entity.Activity.Activity
 > => {
   return {
     name: 'get_user_recent_updates',
@@ -71,10 +71,19 @@ export const getUserRecentUpdatesTool = (
       'Returns recent updates (activities) for a specific user'
     ),
     schema: z.object(getUserRecentUpdatesSchema(t)),
-    outputSchema: ActivitySchema,
+    returnsList: true,
+    outputFields: outputFields<Entity.Activity.Activity>()([
+      'id',
+      'project',
+      'type',
+      'content',
+      'notifications',
+      'createdUser',
+      'created',
+    ]),
     importantFields: ['id', 'type', 'content', 'created'],
     handler: async ({ userId, activityTypeId, minId, maxId, count, order }) =>
-      backlog.getUserActivities(userId, {
+      getUserActivities(backlog, userId, {
         activityTypeId,
         minId,
         maxId,

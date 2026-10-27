@@ -1,8 +1,10 @@
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { postIssue } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { z } from 'zod';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { IssueSchema } from '../types/zod/backlogOutputDefinition.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
+import { outputFields } from '../types/outputFields.js';
 import { customFieldsToPayload } from '../backlog/customFields.js';
 
 const addIssueSchema = buildToolSchema((t) => ({
@@ -80,10 +82,18 @@ const addIssueSchema = buildToolSchema((t) => ({
             )
           ),
         value: z
-          .union([z.number(), z.array(z.number())])
+          .union([
+            z.string(),
+            z.number(),
+            z.array(z.string()),
+            z.array(z.number()),
+          ])
           .optional()
           .describe(
-            'The ID(s) of the custom field item. For single-select fields, provide a number. For multi-select fields, provide an array of numbers representing the selected item IDs.'
+            t(
+              'TOOL_ADD_ISSUE_CUSTOM_FIELD_VALUE',
+              'Value of the custom field. For text/date fields, provide a string. For numeric fields, provide a number. For list fields, provide an array of strings or numbers.'
+            )
           ),
         otherValue: z
           .string()
@@ -106,12 +116,9 @@ const addIssueSchema = buildToolSchema((t) => ({
 }));
 
 export const addIssueTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
-): ToolDefinition<
-  ReturnType<typeof addIssueSchema>,
-  (typeof IssueSchema)['shape']
-> => {
+  backlog: Client,
+  { t }: DescriptionHelper
+): ToolDefinition<ReturnType<typeof addIssueSchema>, Entity.Issue.Issue> => {
   return {
     name: 'add_issue',
     description: t(
@@ -119,7 +126,37 @@ export const addIssueTool = (
       'Creates a new issue in the specified project.'
     ),
     schema: z.object(addIssueSchema(t)),
-    outputSchema: IssueSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Issue.Issue>()([
+      'id',
+      'projectId',
+      'issueKey',
+      'keyId',
+      'issueType',
+      'summary',
+      'description',
+      'resolution',
+      'priority',
+      'status',
+      'assignee',
+      'category',
+      'versions',
+      'milestone',
+      'startDate',
+      'dueDate',
+      'estimatedHours',
+      'actualHours',
+      'parentIssueId',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+      'customFields',
+      'attachments',
+      'sharedFiles',
+      'stars',
+      'childIssueSummary',
+    ]),
     importantFields: ['summary', 'issueKey', 'description', 'createdUser'],
     handler: async ({ customFields, ...params }) => {
       const customFieldPayload = customFieldsToPayload(customFields);
@@ -129,7 +166,7 @@ export const addIssueTool = (
         ...customFieldPayload,
       };
 
-      return backlog.postIssue(finalPayload);
+      return postIssue(backlog, finalPayload);
     },
   };
 };

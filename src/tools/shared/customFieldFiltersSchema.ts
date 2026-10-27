@@ -1,7 +1,7 @@
 import { z, ZodIssueCode } from 'zod';
-import { TranslationHelper } from '../../createTranslationHelper.js';
+import { DescriptionHelper } from '../../createDescriptionHelper.js';
 
-export const buildCustomFieldFilterSchema = (t: TranslationHelper['t']) => {
+export const buildCustomFieldFilterSchema = (t: DescriptionHelper['t']) => {
   const schema = z.discriminatedUnion('type', [
     z
       .object({
@@ -122,7 +122,3 @@ export const buildCustomFieldFilterSchema = (t: TranslationHelper['t']) => {
     }
   });
 };
-
-export type CustomFieldFilterSchema = ReturnType<
-  typeof buildCustomFieldFilterSchema
->;

@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { postProject } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { ProjectSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const addProjectSchema = buildToolSchema((t) => ({
   name: z.string().describe(t('TOOL_ADD_PROJECT_NAME', 'Project name')),
@@ -46,17 +48,37 @@ const addProjectSchema = buildToolSchema((t) => ({
 }));
 
 export const addProjectTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof addProjectSchema>,
-  (typeof ProjectSchema)['shape']
+  Entity.Project.Project
 > => {
   return {
     name: 'add_project',
     description: t('TOOL_ADD_PROJECT_DESCRIPTION', 'Creates a new project'),
     schema: z.object(addProjectSchema(t)),
-    outputSchema: ProjectSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Project.Project>()([
+      'id',
+      'projectKey',
+      'name',
+      'chartEnabled',
+      'useResolvedForChart',
+      'subtaskingEnabled',
+      'projectLeaderCanEditProjectLeader',
+      'useWiki',
+      'useFileSharing',
+      'useWikiTreeView',
+      'useOriginalImageSizeAtWiki',
+      'useSubversion',
+      'useGit',
+      'textFormattingRule',
+      'archived',
+      'displayOrder',
+      'useDevAttributes',
+      'grandchildIssueEnabled',
+    ]),
     handler: async ({
       name,
       key,
@@ -65,7 +87,7 @@ export const addProjectTool = (
       projectLeaderCanEditProjectLeader,
       textFormattingRule,
     }) =>
-      backlog.postProject({
+      postProject(backlog, {
         name,
         key,
         chartEnabled: chartEnabled ?? false,

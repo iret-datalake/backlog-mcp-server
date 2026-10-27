@@ -1,5 +1,5 @@
-import { Backlog } from 'backlog-js';
-import { TranslationHelper } from '../createTranslationHelper.js';
+import type { Client } from 'backlog-js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { ToolsetGroup } from '../types/toolsets.js';
 import { addIssueTool } from './addIssue.js';
 import { addIssueCommentTool } from './addIssueComment.js';
@@ -10,14 +10,18 @@ import { addWikiTool } from './addWiki.js';
 import { updateWikiTool } from './updateWiki.js';
 import { countIssuesTool } from './countIssues.js';
 import { deleteIssueTool } from './deleteIssue.js';
-import { deleteProjectTool } from './deleteProject.js';
+import { addCategoryTool } from './addCategory.js';
 import { getCategoriesTool } from './getCategories.js';
 import { getCustomFieldsTool } from './getCustomFields.js';
 import { getGitRepositoriesTool } from './getGitRepositories.js';
 import { getGitRepositoryTool } from './getGitRepository.js';
 import { getIssueTool } from './getIssue.js';
+import { getIssueAttachmentTool } from './getIssueAttachment.js';
 import { getIssueCommentsTool } from './getIssueComments.js';
 import { getIssuesTool } from './getIssues.js';
+import { getRelatedIssuesTool } from './getRelatedIssues.js';
+import { addRelatedIssueTool } from './addRelatedIssue.js';
+import { removeRelatedIssueTool } from './removeRelatedIssue.js';
 import { getIssueTypesTool } from './getIssueTypes.js';
 import { getMyselfTool } from './getMyself.js';
 import { getNotificationsTool } from './getNotifications.js';
@@ -25,6 +29,7 @@ import { getNotificationsCountTool } from './getNotificationsCount.js';
 import { getPrioritiesTool } from './getPriorities.js';
 import { getProjectTool } from './getProject.js';
 import { getProjectListTool } from './getProjectList.js';
+import { getProjectUsersTool } from './getProjectUsers.js';
 import { getPullRequestTool } from './getPullRequest.js';
 import { getPullRequestCommentsTool } from './getPullRequestComments.js';
 import { getPullRequestsTool } from './getPullRequests.js';
@@ -47,12 +52,14 @@ import { getWikisCountTool } from './getWikisCount.js';
 import { markNotificationAsReadTool } from './markNotificationAsRead.js';
 import { resetUnreadNotificationCountTool } from './resetUnreadNotificationCount.js';
 import { updateIssueTool } from './updateIssue.js';
+import { updateIssueCommentTool } from './updateIssueComment.js';
 import { updateProjectTool } from './updateProject.js';
 import { updatePullRequestTool } from './updatePullRequest.js';
 import { updatePullRequestCommentTool } from './updatePullRequestComment.js';
 import { getDocumentTool } from './getDocument.js';
 import { getDocumentsTool } from './getDocuments.js';
 import { getDocumentTreeTool } from './getDocumentTree.js';
+import { getDocumentCommentsTool } from './getDocumentComments.js';
 import { getVersionMilestoneListTool } from './getVersionMilestoneList.js';
 import { addVersionMilestoneTool } from './addVersionMilestone.js';
 import { updateVersionMilestoneTool } from './updateVersionMilestone.js';
@@ -60,8 +67,8 @@ import { deleteVersionTool } from './deleteVersion.js';
 import { addDocumentTool } from './addDocument.js';
 
 export const allTools = (
-  backlog: Backlog,
-  helper: TranslationHelper
+  backlog: Client,
+  helper: DescriptionHelper
 ): ToolsetGroup => {
   return {
     toolsets: [
@@ -88,14 +95,15 @@ export const allTools = (
           getProjectListTool(backlog, helper),
           addProjectTool(backlog, helper),
           getProjectTool(backlog, helper),
+          getProjectUsersTool(backlog, helper),
           updateProjectTool(backlog, helper),
-          deleteProjectTool(backlog, helper),
         ],
       },
       {
         name: 'issue',
         description: 'Tools for managing issues and their comments.',
         enabled: false,
+        nativeContentTools: [getIssueAttachmentTool(backlog, helper)],
         tools: [
           getIssueTool(backlog, helper),
           getIssuesTool(backlog, helper),
@@ -105,8 +113,13 @@ export const allTools = (
           deleteIssueTool(backlog, helper),
           getIssueCommentsTool(backlog, helper),
           addIssueCommentTool(backlog, helper),
+          updateIssueCommentTool(backlog, helper),
+          getRelatedIssuesTool(backlog, helper),
+          addRelatedIssueTool(backlog, helper),
+          removeRelatedIssueTool(backlog, helper),
           getPrioritiesTool(backlog, helper),
           getCategoriesTool(backlog, helper),
+          addCategoryTool(backlog, helper),
           getCustomFieldsTool(backlog, helper),
           getIssueTypesTool(backlog, helper),
           getResolutionsTool(backlog, helper),
@@ -159,6 +172,7 @@ export const allTools = (
           getDocumentsTool(backlog, helper),
           getDocumentTreeTool(backlog, helper),
           getDocumentTool(backlog, helper),
+          getDocumentCommentsTool(backlog, helper),
           addDocumentTool(backlog, helper),
         ],
       },

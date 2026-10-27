@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { patchPullRequest } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { PullRequestSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
 const updatePullRequestSchema = buildToolSchema((t) => ({
@@ -73,11 +75,11 @@ const updatePullRequestSchema = buildToolSchema((t) => ({
 }));
 
 export const updatePullRequestTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof updatePullRequestSchema>,
-  (typeof PullRequestSchema)['shape']
+  Entity.PullRequest.PullRequest
 > => {
   return {
     name: 'update_pull_request',
@@ -86,7 +88,31 @@ export const updatePullRequestTool = (
       'Updates an existing pull request'
     ),
     schema: z.object(updatePullRequestSchema(t)),
-    outputSchema: PullRequestSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.PullRequest.PullRequest>()([
+      'id',
+      'projectId',
+      'repositoryId',
+      'number',
+      'summary',
+      'description',
+      'base',
+      'branch',
+      'status',
+      'assignee',
+      'issue',
+      'baseCommit',
+      'branchCommit',
+      'mergeCommit',
+      'closeAt',
+      'mergeAt',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+      'attachments',
+      'stars',
+    ]),
     handler: async ({
       projectId,
       projectKey,
@@ -111,7 +137,8 @@ export const updatePullRequestTool = (
       if (!resultRepo.ok) {
         throw resultRepo.error;
       }
-      return backlog.patchPullRequest(
+      return patchPullRequest(
+        backlog,
         result.value,
         String(resultRepo.value),
         number,

@@ -1,73 +1,45 @@
-import { parse, SelectionSetNode } from 'graphql';
 import { isErrorLike, SafeResult } from '../../types/result.js';
 
-export function wrapWithFieldPicking<I extends { fields?: string }, O>(
+// Top-level names only, on purpose. `fields` is validated against the tool's enum before it
+// gets here, so an unknown name is rejected rather than silently dropped.
+export function wrapWithFieldPicking<I extends { fields?: string[] }, O>(
   fn: (input: I) => Promise<SafeResult<O>>
 ): (input: I) => Promise<SafeResult<O>> {
   return async (input: I) => {
     const { fields, ...rest } = input;
     const result = await fn(rest as I);
 
-    if (!fields || isErrorLike(result)) {
+    if (!fields || fields.length === 0 || isErrorLike(result)) {
       return result;
     }
 
-    const selectionSet = parseFieldsSelection(fields);
-    const resultData = result.data;
+    const data = result.data;
 
-    if (Array.isArray(resultData)) {
+    if (Array.isArray(data)) {
       return {
         kind: 'ok',
-        data: resultData.map((item) =>
-          pickFieldsFromData(item, selectionSet)
-        ) as unknown as O,
+        data: data.map((item) => pick(item, fields)) as unknown as O,
       };
-    } else if (typeof result === 'object' && result !== null) {
-      return {
-        kind: 'ok',
-        data: pickFieldsFromData(
-          resultData as Record<string, unknown>,
-          selectionSet
-        ) as O,
-      };
-    } else {
-      return result;
     }
+
+    if (typeof data === 'object' && data !== null) {
+      return {
+        kind: 'ok',
+        data: pick(data as Record<string, unknown>, fields) as O,
+      };
+    }
+
+    return result;
   };
 }
 
-function parseFieldsSelection(fieldsString: string): SelectionSetNode {
-  const query = `query Dummy ${fieldsString}`;
-  const ast = parse(query);
-  const opDef = ast.definitions[0];
-  if (opDef.kind !== 'OperationDefinition' || !opDef.selectionSet) {
-    throw new Error('Invalid GraphQL fields');
+function pick(value: unknown, fields: string[]): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+
+  const source = value as Record<string, unknown>;
+  const picked: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (field in source) picked[field] = source[field];
   }
-  return opDef.selectionSet;
-}
-
-function pickFieldsFromData(
-  data: Record<string, unknown> | null | undefined,
-  selectionSet: SelectionSetNode
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-
-  for (const selection of selectionSet.selections) {
-    if (selection.kind === 'Field') {
-      const key = selection.name.value;
-      if (data != null && key in data) {
-        const value = data[key];
-        if (selection.selectionSet && value != null) {
-          result[key] = pickFieldsFromData(
-            data[key] as Record<string, unknown>,
-            selection.selectionSet
-          );
-        } else {
-          result[key] = data[key];
-        }
-      }
-    }
-  }
-
-  return result;
+  return picked;
 }

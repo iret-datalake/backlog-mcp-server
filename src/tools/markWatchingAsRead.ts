@@ -1,7 +1,12 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import { resetWatchingListItemAsRead } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
+import { outputFields } from '../types/outputFields.js';
+
+/** This tool reports its own outcome; the Backlog call returns nothing. */
+type MarkWatchingAsReadResult = { success: boolean; message: string };
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const markWatchingAsReadSchema = buildToolSchema((t) => ({
   watchId: z
@@ -17,11 +22,11 @@ export const MarkWatchingAsReadResultSchema = z.object({
 });
 
 export const markWatchingAsReadTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof markWatchingAsReadSchema>,
-  (typeof MarkWatchingAsReadResultSchema)['shape']
+  MarkWatchingAsReadResult
 > => {
   return {
     name: 'mark_watching_as_read',
@@ -30,9 +35,13 @@ export const markWatchingAsReadTool = (
       'Mark a watch as read'
     ),
     schema: z.object(markWatchingAsReadSchema(t)),
-    outputSchema: MarkWatchingAsReadResultSchema,
+    returnsList: false,
+    outputFields: outputFields<MarkWatchingAsReadResult>()([
+      'success',
+      'message',
+    ]),
     handler: async ({ watchId }) => {
-      await backlog.resetWatchingListItemAsRead(watchId);
+      await resetWatchingListItemAsRead(backlog, watchId);
       return {
         success: true,
         message: `Watch ${watchId} marked as read`,

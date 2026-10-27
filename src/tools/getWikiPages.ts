@@ -1,10 +1,16 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getWikis } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { WikiListItemSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 import { generatePermalink } from '../utils/generatePermalink.js';
+
+type WikiListItemWithPermalink = Entity.Wiki.WikiListItem & {
+  permalink: string;
+};
 
 const getWikiPagesSchema = buildToolSchema((t) => ({
   projectId: z
@@ -33,17 +39,12 @@ const getWikiPagesSchema = buildToolSchema((t) => ({
     ),
 }));
 
-// custom output schema to add permalink field
-const getWikiPagesToolOutputSchema = WikiListItemSchema.extend({
-  permalink: z.string().url(),
-});
-
 export const getWikiPagesTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getWikiPagesSchema>,
-  (typeof getWikiPagesToolOutputSchema)['shape']
+  WikiListItemWithPermalink
 > => {
   return {
     name: 'get_wiki_pages',
@@ -52,7 +53,18 @@ export const getWikiPagesTool = (
       'Returns list of Wiki pages'
     ),
     schema: z.object(getWikiPagesSchema(t)),
-    outputSchema: getWikiPagesToolOutputSchema,
+    returnsList: true,
+    outputFields: outputFields<WikiListItemWithPermalink>()([
+      'id',
+      'projectId',
+      'name',
+      'tags',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+      'permalink',
+    ]),
     importantFields: ['projectId', 'name', 'tags'],
     handler: async ({ projectId, projectKey, keyword }) => {
       const result = resolveIdOrKey(
@@ -63,15 +75,14 @@ export const getWikiPagesTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.getWikis({
+      const wikis = await getWikis(backlog, {
         projectIdOrKey: result.value,
         keyword,
-      }).then((wikis) =>
-        wikis.map((wiki) => ({
-          ...wiki,
-          permalink: generatePermalink('wiki', wiki.id),
-        }))
-      );
+      });
+      return wikis.map((wiki) => ({
+        ...wiki,
+        permalink: generatePermalink('wiki', wiki.id),
+      }));
     },
   };
 };

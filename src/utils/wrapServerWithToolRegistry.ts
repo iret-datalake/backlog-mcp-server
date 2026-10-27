@@ -1,22 +1,22 @@
-import {
+import type {
   McpServer,
+  StandardSchemaWithJSON,
+  ToolAnnotations,
   ToolCallback,
-} from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
+} from '@modelcontextprotocol/server';
 
-// Extended type that has the MCP core, a set of registered tool names, and a registration function
 export interface BacklogMCPServer extends McpServer {
   __registeredToolNames?: Set<string>;
 
   registerOnce: (
     name: string,
     description: string,
-    schema: ZodRawShapeCompat,
-    handler: ToolCallback<ZodRawShapeCompat>
+    schema: StandardSchemaWithJSON,
+    handler: ToolCallback<StandardSchemaWithJSON>,
+    annotations?: ToolAnnotations
   ) => void;
 }
 
-// This function takes an McpServer instance and extends it with a tool registration mechanism that prevents duplicate tool registrations.
 export function wrapServerWithToolRegistry(
   server: McpServer
 ): BacklogMCPServer {
@@ -29,15 +29,20 @@ export function wrapServerWithToolRegistry(
   s.registerOnce = (
     name: string,
     description: string,
-    schema: ZodRawShapeCompat,
-    handler: ToolCallback<ZodRawShapeCompat>
+    schema: StandardSchemaWithJSON,
+    handler: ToolCallback<StandardSchemaWithJSON>,
+    annotations?: ToolAnnotations
   ) => {
     if (s.__registeredToolNames!.has(name)) {
       console.warn(`Skipping duplicate tool registration: ${name}`);
       return;
     }
     s.__registeredToolNames!.add(name);
-    s.tool(name, description, schema, handler);
+    s.registerTool(
+      name,
+      { description, inputSchema: schema, annotations },
+      handler
+    );
   };
 
   return s;

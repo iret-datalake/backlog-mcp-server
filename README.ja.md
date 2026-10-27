@@ -16,7 +16,7 @@ Backlog API とやり取りするための Model Context Protocol（MCP）サー
 - Wikiページサポート
 - Gitリポジトリとプルリクエストツール
 - 通知ツール
-- 最適化されたレスポンスのためのGraphQLスタイルのフィールド選択
+- 最適化されたレスポンスのためのフィールド選択
 - 大規模なレスポンスに対するトークン制限
 
 ## 利用開始
@@ -101,8 +101,8 @@ docker pull ghcr.io/nulab/backlog-mcp-server:latest
    ```bash
    git clone https://github.com/nulab/backlog-mcp-server.git
    cd backlog-mcp-server
-   npm install
-   npm run build
+   pnpm install
+   pnpm run build
    ```
 
 2. テンプレートから `.env` を作成し、必須の環境変数を設定します：
@@ -119,7 +119,7 @@ cp .env.example .env
 3. ローカルで起動します：
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 4. MCPとして使用するJSONを設定します：
@@ -138,6 +138,68 @@ npm run dev
   }
 }
 ```
+
+### OAuth 2.0 認証（リモートMCP）
+
+MCPサーバーをネットワーク経由で公開する場合、OAuth 2.0認証を有効にすることで、共有APIキーではなく各ユーザーが自分のBacklogアカウントで認証できます。
+
+サーバーは [MCP Third-Party Authorization Flow](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization) を実装しており、MCPクライアント向けのOAuth認可サーバーとBacklog向けのOAuthクライアントの両方として動作します。
+
+#### 前提条件
+
+1. Backlogスペースにてアプリケーションを登録します：
+   - Backlogスペース → 個人設定 → アプリケーションの登録
+   - **リダイレクトURI** を `<MCP_SERVER_BASE_URL>/callback`（例：`https://mcp.example.com/callback`）に設定
+   - **Client ID** と **Client Secret** をメモ
+
+2. 以下の環境変数を設定します（`BACKLOG_DOMAIN` に加えて）：
+
+| 変数                          | 説明                                                  |
+| ----------------------------- | ----------------------------------------------------- |
+| `BACKLOG_OAUTH_CLIENT_ID`     | Backlogアプリケーションの OAuth Client ID             |
+| `BACKLOG_OAUTH_CLIENT_SECRET` | Backlogアプリケーションの OAuth Client Secret         |
+| `MCP_SERVER_BASE_URL`         | MCPサーバーの公開URL（例：`https://mcp.example.com`） |
+
+> **注意:** OAuth有効時は `BACKLOG_API_KEY` は**不要**です。各ユーザーが自分のBacklogアカウントで認証します。
+
+#### 使用例
+
+```bash
+BACKLOG_DOMAIN=your-space.backlog.com \
+BACKLOG_OAUTH_CLIENT_ID=your-client-id \
+BACKLOG_OAUTH_CLIENT_SECRET=your-client-secret \
+MCP_SERVER_BASE_URL=https://mcp.example.com \
+node build/index.js --transport http --http-host 0.0.0.0 --http-port 3333 \
+  --http-allowed-hosts mcp.example.com
+```
+
+`0.0.0.0` にバインドする場合、`--http-allowed-hosts` は実質必須です。指定しないとDNSリバインディング保護が一切効かず、起動時に警告がログ出力されます。
+
+OAuth有効時、サーバーは以下のOAuthエンドポイントを自動的に公開します：
+
+| エンドポイント                                  | 説明                                                                                     |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `GET /.well-known/oauth-authorization-server`   | OAuth認可サーバーメタデータ（[RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414)） |
+| `GET /.well-known/oauth-protected-resource/mcp` | OAuthリソースメタデータ（[RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728)）     |
+| `POST /register`                                | 動的クライアント登録（[RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)）        |
+| `GET /authorize`                                | 認可エンドポイント（Backlog OAuthへリダイレクト）                                        |
+| `GET /callback`                                 | Backlog OAuthコールバック                                                                |
+| `POST /token`                                   | トークンエンドポイント（認可コード＆リフレッシュトークン）                               |
+
+MCP認可仕様に対応するMCPクライアントは、これらのエンドポイントを自動的に使用します。
+
+`POST /register` は登録できる redirect URI を制限します。ループバック URI
+（`http://localhost`、`http://127.0.0.1`、`http://[::1]`）はユーザーのマシン上で動く
+アプリが認可コードを受け取るための手段で、`"application_type": "native"` を宣言した
+クライアント、または宣言がない場合は redirect URI が**すべて**ループバックである
+クライアントから受け付けます。`"application_type": "web"` を宣言したクライアントや、
+宣言なしでリモートの `https:` URI とループバック URI を混在させた登録は
+`invalid_client_metadata` で拒否されます。
+
+> **制約事項:**
+>
+> - OAuthモードは現在、単一のBacklog組織のみをサポートしています。複数組織設定との併用はできません。
+> - クライアント登録やトークンはメモリ内に保持されるため、サーバー再起動時に失われます。
 
 ## ツール設定
 
@@ -178,24 +240,6 @@ ENABLE_TOOLSETS="space,project,issue"
 ツールセットリストがAIエージェントにとって大きすぎる場合や、特定のツールがパフォーマンスの問題を引き起こしている場合に、選択的なツールセットの使用が役立つことがあります。そのような場合、未使用のツールセットを無効にすると安定性が向上する可能性があります。
 
 > 🧩 ヒント: `project` ツールセットは、他の多くのツールがエントリポイントとしてプロジェクトデータに依存しているため、強く推奨されます。
-
-### 動的なツールセット検出（実験的）
-
-MCPサーバーをAIエージェントと共に使用している場合、実行時にツールセットの動的な検出を有効にすることができます：
-
-CLI経由での有効化：
-
-```
---dynamic-toolsets
-```
-
-または環境変数経由：
-
-```
--e DYNAMIC_TOOLSETS=1 \
-```
-
-動的ツールセットを有効にすると、LLMはツールインターフェースを介してオンデマンドでツールセットを一覧表示およびアクティブ化できるようになります。
 
 ## 利用可能なツール
 
@@ -247,9 +291,13 @@ PROJECT-KEYプロジェクトの「repo-name」リポジトリで、ブランチ
 私がウォッチしているすべてのアイテムを表示してください。
 ```
 
-### i18n / 説明のオーバーライド
+### ツール説明のオーバーライド
 
 **ホームディレクトリ** に `.backlog-mcp-serverrc.json` ファイルを作成することで、ツールの説明をオーバーライドできます。
+
+これらの文字列のほとんどは、モデルがどのツールを呼ぶか、引数に何を入れるかを判断するために読むツール説明・パラメータ説明です。したがってオーバーライドは、似た2つのツールを区別させたり、チームの運用ルールを添えたりしてツール選択を誘導するための手段であり、応答の言語を変えるためのものではありません。モデルは説明が何語で書かれていても、質問された言語で応答します。
+
+一部のキーは、これとは別にバリデーションエラーのメッセージです（例：`PROJECT_ID_OR_KEY_REQUIRED`）。呼び出しが弾かれたときにツールの実行結果として返るため、モデルの応答を経由してユーザーの目に触れることがあります。
 
 ファイルには、ツール名をキーとし、新しい説明を値とするJSONオブジェクトを含める必要があります。
 例：
@@ -265,7 +313,9 @@ PROJECT-KEYプロジェクトの「repo-name」リポジトリで、ブランチ
 
 1. 環境変数（例：`BACKLOG_MCP_TOOL_ADD_ISSUE_COMMENT_DESCRIPTION`）
 2. `.backlog-mcp-serverrc.json` 内のエントリ - サポートされる設定ファイル形式：.json、.yaml、.yml
-3. 組み込みのフォールバック値（英語）
+3. 組み込みのデフォルト値
+
+空文字列または文字列以外の値は、どの段階でも無視され、組み込みのデフォルト値が使われます。
 
 サンプル設定：
 
@@ -295,35 +345,25 @@ PROJECT-KEYプロジェクトの「repo-name」リポジトリで、ブランチ
 }
 ```
 
-### 現在の翻訳のエクスポート
+### 現在の説明のエクスポート
 
-`--export-translations` フラグを指定してバイナリを実行することで、現在のデフォルト翻訳（オーバーライドを含む）をエクスポートできます。
+`--export-descriptions` フラグを指定してバイナリを実行することで、現在の説明（オーバーライドを含む）をエクスポートできます。このフラグは以前 `--export-translations` という名前でした。旧名も当面は動作しますが、非推奨の警告を出力し、将来のリリースで削除されます。
 
-これにより、行ったカスタマイズを含むすべてのツール説明が標準出力に出力されます。
+ツール一覧の構築時に解決されるすべてのキーと現在の値が、行ったカスタマイズを含めて標準出力に出力されます。ツール説明・パラメータ説明はすべて含まれるため、キー名を調べる用途にはこれを使ってください。
+
+バリデーションエラーのメッセージは含まれません。これらのキーは、実際に呼び出しが弾かれたときにはじめて解決されるためです。オーバーライド自体は同じ規則で可能ですが、キー名はソースを読んで調べる必要があります。
 
 例：
 
 ```bash
-docker run -i --rm ghcr.io/nulab/backlog-mcp-server node build/index.js --export-translations
+docker run -i --rm ghcr.io/nulab/backlog-mcp-server node build/index.js --export-descriptions
 ```
 
 または
 
 ```bash
-npx github:nulab/backlog-mcp-server --export-translations
+npx github:nulab/backlog-mcp-server --export-descriptions
 ```
-
-### 日本語翻訳テンプレートの使用
-
-サンプルの日本語設定ファイルは次の場所に提供されています：
-
-```bash
-translationConfig/.backlog-mcp-serverrc.json.example
-```
-
-これを使用するには、ホームディレクトリに `.backlog-mcp-serverrc.json` としてコピーします：
-
-その後、必要に応じてファイルを編集して説明をカスタマイズできます。
 
 ### 環境変数の使用
 
@@ -385,7 +425,17 @@ PREFIX="backlog_"
 
 ### レスポンスの最適化とトークン制限
 
-#### フィールド選択（GraphQLスタイル）
+#### レスポンスの圧縮
+
+ツールの結果は、返す前に圧縮されます。この処理は常に有効で、ファイルそのものを返す `get_issue_attachment` 以外のすべてのツールに適用されます：
+
+- 結果の中にネストしたユーザー（`createdUser`、`assignee`、`stars[].presenter`、通知の `sender` など）は `id`、`userId`、`name` だけになります。結果そのものがユーザーである場合（`get_myself`、`get_users` や `get_project_users` の各要素）はそのまま返ります。
+- ネストしたプロジェクト（アクティビティや通知の `project`）は `id`、`projectKey`、`name` だけに、ネストした課題（プルリクエストや通知の `issue`）は `id`、`issueKey`、`summary`、`status` だけになります。結果そのものがプロジェクトや課題である場合（`get_project`、`get_issue`、`get_project_list` や `get_issues` の各要素）はそのまま返ります。`get_watching_list_items` の各要素の課題もそのまま返ります。
+- ネストしたエンティティ（ステータス、課題種別、カテゴリー、マイルストーン、カスタムフィールドの選択肢など）からは `color` と `displayOrder` が、ネストしたマイルストーンからはさらに `description` が省略されます。これら自体を一覧で返すツール（`get_issue_types`、`get_categories`、`get_version_milestone_list` など）ではそのまま返ります。
+- 値が `null`、空文字、空配列のフィールドは省略されます。`0`、`false`、`{}` は残ります。`fields` で指定したフィールドも同じで、空の場合は空の値ではなく省略されます。
+- JSON はインデントなしで返ります。
+
+#### フィールド選択
 
 ```
 --optimize-response
@@ -397,17 +447,13 @@ PREFIX="backlog_"
 OPTIMIZE_RESPONSE=1
 ```
 
-次に、特定のフィールドのみを要求します：
+**一覧を返すツール**に `fields` パラメータ（省略可）が追加されます。値はそのツールの結果のトップレベルのフィールド名のリストで、enum として公開されるため、そのツールに存在しない名前は無視されずに拒否されます。単体のレコードを返すツールには追加されません（パラメータは毎セッション費用がかかる一方、1 件のレコードから削れる量はごくわずかなためです）。
 
 ```
-get_project(projectIdOrKey: "PROJECT-KEY", fields: "{ name key description }")
+get_project(projectIdOrKey: "PROJECT-KEY", fields: ["name", "key", "description"])
 ```
 
-AIはフィールド選択を使用してレスポンスを最適化します：
-
-```
-get_project(projectIdOrKey: "PROJECT-KEY", fields: "{ name key description }")
-```
+`fields` を省略すると結果全体が返ります。選択は 1 階層のみで、オブジェクトや配列のフィールドを指定した場合はそのまま丸ごと返ります。
 
 利点：
 
@@ -432,6 +478,22 @@ MAX_TOKENS=10000
 レスポンスが制限を超えた場合、警告と共に切り捨てられます。
 
 > 注：これはベストエフォートの緩和策であり、保証された強制ではありません。
+
+### ログ出力
+
+ログは **stderr** に出力されます（stdio トランスポートでは stdout が JSON-RPC のストリームに使われるため）。
+
+| 変数        | 説明                                                                                                                                                                        |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LOG_LEVEL` | `fatal` / `error` / `warn` / `info` / `debug` / `trace` / `silent`。既定は `NODE_ENV` が `production`（未設定時もこれに含まれる）のとき `error`、それ以外は `debug`。認識できない値は通知した上で既定値にフォールバックします。 |
+
+出力**フォーマット**は引き続き `NODE_ENV` が決めます（`production` 以外では `pino-pretty` が利用可能なら人間向けの整形出力に切り替わります）。ログ量を変えたいときは `NODE_ENV` ではなく `LOG_LEVEL` を設定してください。デプロイ先で構造化 JSON のまま保てます。
+
+`pino-pretty` は開発用の依存なので、公開されている npm パッケージにもコンテナイメージにも含まれていません。そのため、これらでは `NODE_ENV` の値に関わらず常に構造化 JSON が出力され、出力を変えられるのは `LOG_LEVEL` だけです。
+
+```
+LOG_LEVEL=info node build/index.js --transport http
+```
 
 ### 完全なカスタム設定例
 
@@ -466,8 +528,7 @@ MAX_TOKENS=10000
         "MAX_TOKENS": "10000",
         "OPTIMIZE_RESPONSE": "1",
         "PREFIX": "backlog_",
-        "ENABLE_TOOLSETS": "space,project,issue",
-        "ENABLE_DYNAMIC_TOOLSETS": "1"
+        "ENABLE_TOOLSETS": "space,project,issue"
       }
     }
   }
@@ -479,7 +540,7 @@ MAX_TOKENS=10000
 ### テストの実行
 
 ```bash
-npm test
+pnpm test
 ```
 
 ### 新しいツールの追加
@@ -493,8 +554,8 @@ npm test
 
 サーバーはいくつかのコマンドラインオプションをサポートしています：
 
-- `--export-translations`: すべての翻訳キーと値をエクスポート
-- `--optimize-response`: GraphQLスタイルのフィールド選択を有効にする
+- `--export-descriptions`: ツール一覧の構築時に解決される説明キーと値をエクスポート。旧名は `--export-translations` で、非推奨エイリアスとして当面動作しますが、将来のリリースで削除されます
+- `--optimize-response`: 各ツールに、返す結果フィールドを選ぶ `fields` パラメータを追加する
 - `--max-tokens=NUMBER`: レスポンスの最大トークン制限を設定
 - `--prefix=STRING`: すべてのツール名に付加するオプションの文字列プレフィックス（デフォルト：""）
 - `--enable-toolsets <toolsets...>`: 有効にするツールセットを指定します（カンマ区切りまたは複数の引数）。デフォルトは "all" です。
@@ -552,7 +613,9 @@ BACKLOG_API_KEY=your-api-key
 
 ### ツールの使い方
 
-通常のツールはすべて、任意の`organization`入力フィールドを受け付けます。指定した場合、そのBacklog組織に対してツールが実行されます。
+マルチ組織用の環境変数が設定されている場合、通常のツールはすべて任意の`organization`入力フィールドを受け付けます。指定した場合、そのBacklog組織に対してツールが実行されます。
+
+単一組織モードでは、ルーティング先が1つしかないためこのフィールドは公開されません。これにより`tools/list`のレスポンスから約8KBのスキーマが削減されます。
 
 例：
 
@@ -570,7 +633,7 @@ BACKLOG_API_KEY=your-api-key
 
 ### 組織一覧の確認
 
-サーバーは `list_organizations` ツールを提供しており、設定済みの組織名、ドメイン、デフォルト組織かどうかを返します。
+マルチ組織モードでは、サーバーは `list_organizations` ツールを提供しており、設定済みの組織名、ドメイン、デフォルト組織かどうかを返します。単一組織モードでは登録されません。
 
 レスポンス例：
 

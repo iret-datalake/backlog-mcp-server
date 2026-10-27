@@ -1,23 +1,22 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getIssues } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { IssueSchema } from '../types/zod/backlogOutputDefinition.js';
-
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { customFieldFiltersToPayload } from '../backlog/customFields.js';
 import { buildCustomFieldFilterSchema } from './shared/customFieldFiltersSchema.js';
-
-import { customFieldsToPayload } from '../backlog/customFields.js';
 import { projectList } from '../projectList.js';
 import { generatePermalink } from '../utils/generatePermalink.js';
 
+type IssueWithPermalink = Entity.Issue.Issue & { permalink: string };
 
 const getIssuesSchema = buildToolSchema((t) => ({
   projectId: z
     .array(z.number())
     .optional()
-    .describe(t('TOOL_GET_ISSUES_PROJECT_ID', 'Project IDs'))
-    .default(projectList),
+    .describe(t('TOOL_GET_ISSUES_PROJECT_ID', 'Project IDs')),
   issueTypeId: z
     .array(z.number())
     .optional()
@@ -149,21 +148,10 @@ const getIssuesSchema = buildToolSchema((t) => ({
     ),
 }));
 
-
-// Extend the Issue schema
-//    add permalink field
-
-const getIssuesToolOutputSchema = IssueSchema.extend({
-  permalink: z.string().url(),
-});
-
 export const getIssuesTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
-): ToolDefinition<
-  ReturnType<typeof getIssuesSchema>,
-  (typeof getIssuesToolOutputSchema)['shape']
-> => {
+  backlog: Client,
+  { t }: DescriptionHelper
+): ToolDefinition<ReturnType<typeof getIssuesSchema>, IssueWithPermalink> => {
   return {
     name: 'get_issues',
     description: t('TOOL_GET_ISSUES_DESCRIPTION', 'Returns list of issues'),
@@ -176,16 +164,47 @@ export const getIssuesTool = (
       'description',
       'issueType',
     ],
-    outputSchema: getIssuesToolOutputSchema,
-    handler: async ({ customFields, ...rest }) => {
-      const result = await backlog.getIssues({
+    returnsList: true,
+    outputFields: outputFields<IssueWithPermalink>()([
+      'id',
+      'projectId',
+      'issueKey',
+      'keyId',
+      'issueType',
+      'summary',
+      'description',
+      'resolution',
+      'priority',
+      'status',
+      'assignee',
+      'category',
+      'versions',
+      'milestone',
+      'startDate',
+      'dueDate',
+      'estimatedHours',
+      'actualHours',
+      'parentIssueId',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+      'customFields',
+      'attachments',
+      'sharedFiles',
+      'stars',
+      'childIssueSummary',
+      'permalink',
+    ]),
+    handler: async ({ customFields, projectId, ...rest }) => {
+      const issues = await getIssues(backlog, {
         ...rest,
+        projectId: projectId ?? (projectList.length ? projectList : undefined),
         ...customFieldFiltersToPayload(customFields),
       });
-
-      return result.map(issue => ({
+      return issues.map((issue) => ({
         ...issue,
-        permalink: generatePermalink('issue',issue.id),
+        permalink: generatePermalink('issue', issue.id),
       }));
     },
   };

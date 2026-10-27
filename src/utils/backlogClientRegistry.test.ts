@@ -1,26 +1,24 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createTranslationHelper } from '../createTranslationHelper.js';
+import { describe, expect, it, vi } from 'vite-plus/test';
+import { createDescriptionHelper } from '../createDescriptionHelper.js';
 import { composeToolHandler } from '../handlers/builders/composeToolHandler.js';
 import { getSpaceTool } from '../tools/getSpace.js';
 import { createBacklogClientRegistry } from './backlogClientRegistry.js';
 
 vi.mock('backlog-js', () => ({
-  Backlog: class Backlog {
+  createClient: (configure: {
     host: string;
     apiKey: string;
-
-    constructor({ host, apiKey }: { host: string; apiKey: string }) {
-      this.host = host;
-      this.apiKey = apiKey;
-    }
-
-    async getSpace() {
-      return {
-        host: this.host,
-        apiKey: this.apiKey,
-      };
-    }
-  },
+    userAgent?: string;
+  }) => ({ ...configure }),
+  getSpace: async (client: {
+    host: string;
+    apiKey: string;
+    userAgent?: string;
+  }) => ({
+    host: client.host,
+    apiKey: client.apiKey,
+    userAgent: client.userAgent,
+  }),
 }));
 
 describe('createBacklogClientRegistry', () => {
@@ -34,9 +32,9 @@ describe('createBacklogClientRegistry', () => {
 
     const tool = getSpaceTool(
       registry.createScopedClient(),
-      createTranslationHelper()
+      createDescriptionHelper()
     );
-    const handler = composeToolHandler(tool, {
+    const { handler } = composeToolHandler(tool, {
       useFields: false,
       maxTokens: 5000,
     });
@@ -47,6 +45,31 @@ describe('createBacklogClientRegistry', () => {
     if (content.type === 'text') {
       expect(content.text).toContain('single.backlog.com');
       expect(content.text).toContain('single-key');
+    }
+  });
+
+  it('sends a backlog-mcp-server User-Agent on the Backlog client', async () => {
+    const registry = createBacklogClientRegistry({
+      env: {
+        BACKLOG_DOMAIN: 'single.backlog.com',
+        BACKLOG_API_KEY: 'single-key',
+      },
+    });
+
+    const tool = getSpaceTool(
+      registry.createScopedClient(),
+      createDescriptionHelper()
+    );
+    const { handler } = composeToolHandler(tool, {
+      useFields: false,
+      maxTokens: 5000,
+    });
+
+    const result = await handler({}, {} as never);
+    const content = result.content[0];
+    expect(content.type).toBe('text');
+    if (content.type === 'text') {
+      expect(content.text).toMatch(/backlog-mcp-server\/\d+\.\d+\.\d+/);
     }
   });
 
@@ -63,9 +86,9 @@ describe('createBacklogClientRegistry', () => {
 
     const tool = getSpaceTool(
       registry.createScopedClient(),
-      createTranslationHelper()
+      createDescriptionHelper()
     );
-    const handler = composeToolHandler(tool, {
+    const { handler } = composeToolHandler(tool, {
       useFields: false,
       maxTokens: 5000,
     });
@@ -92,9 +115,9 @@ describe('createBacklogClientRegistry', () => {
 
     const tool = getSpaceTool(
       registry.createScopedClient(),
-      createTranslationHelper()
+      createDescriptionHelper()
     );
-    const handler = composeToolHandler(tool, {
+    const { handler } = composeToolHandler(tool, {
       useFields: false,
       maxTokens: 5000,
     });
@@ -171,9 +194,9 @@ describe('createBacklogClientRegistry', () => {
 
     const tool = getSpaceTool(
       registry.createScopedClient(),
-      createTranslationHelper()
+      createDescriptionHelper()
     );
-    const handler = composeToolHandler(tool, {
+    const { handler } = composeToolHandler(tool, {
       useFields: false,
       maxTokens: 5000,
     });
@@ -199,9 +222,9 @@ describe('createBacklogClientRegistry', () => {
 
     const tool = getSpaceTool(
       registry.createScopedClient(),
-      createTranslationHelper()
+      createDescriptionHelper()
     );
-    const handler = composeToolHandler(tool, {
+    const { handler } = composeToolHandler(tool, {
       useFields: false,
       maxTokens: 5000,
     });
