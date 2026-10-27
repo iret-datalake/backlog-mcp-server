@@ -1,0 +1,32 @@
+import { z } from 'zod';
+
+// Defined here because backlog-js has no enum for the activity type filter.
+export const ActivityTypeSchema = z.nativeEnum({
+  Undefined: -1,
+  IssueCreated: 1,
+  IssueUpdated: 2,
+  IssueCommented: 3,
+  IssueDeleted: 4,
+  WikiCreated: 5,
+  WikiUpdated: 6,
+  WikiDeleted: 7,
+  FileAdded: 8,
+  FileUpdated: 9,
+  FileDeleted: 10,
+  SvnCommitted: 11,
+  GitPushed: 12,
+  GitRepositoryCreated: 13,
+  IssueMultiUpdated: 14,
+  ProjectUserAdded: 15,
+  ProjectUserRemoved: 16,
+  NotifyAdded: 17,
+  PullRequestAdded: 18,
+  PullRequestUpdated: 19,
+  PullRequestCommented: 20,
+  PullRequestMerged: 21,
+  MilestoneCreated: 22,
+  MilestoneUpdated: 23,
+  MilestoneDeleted: 24,
+  ProjectGroupAdded: 25,
+  ProjectGroupDeleted: 26,
+});

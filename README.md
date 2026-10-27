@@ -1,5 +1,6 @@
 # Backlog MCP Server
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fnulab%2Fbacklog-mcp-server.svg)](https://mcptoplist.com/server/glama%2Fnulab%2Fbacklog-mcp-server)
 ![MIT License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Build](https://github.com/nulab/backlog-mcp-server/actions/workflows/ci.yml/badge.svg)
 ![Last Commit](https://img.shields.io/github/last-commit/nulab/backlog-mcp-server.svg)
@@ -16,7 +17,7 @@ A Model Context Protocol (MCP) server for interacting with the Backlog API. This
 - Wiki page support
 - Git repository and pull request tools
 - Notification tools
-- GraphQL-style field selection for optimized responses
+- Field selection for optimized responses
 - Token limiting for large responses
 
 ## Getting Started
@@ -101,8 +102,8 @@ Replace `your-domain.backlog.com` with your Backlog domain and `your-api-key` wi
    ```bash
    git clone https://github.com/nulab/backlog-mcp-server.git
    cd backlog-mcp-server
-   npm install
-   npm run build
+   pnpm install
+   pnpm run build
    ```
 
 2. Create `.env` from template and set required variables:
@@ -119,7 +120,7 @@ Set the following values in `.env`:
 3. Run locally:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 4. Set your json to use as MCP
@@ -138,6 +139,94 @@ npm run dev
   }
 }
 ```
+
+### HTTP transport (Streamable HTTP)
+
+By default the server uses **stdio**. To run the [MCP Streamable HTTP](https://modelcontextprotocol.io/) transport instead (JSON-RPC over HTTP, same tools as stdio), start with `--transport http` or set `MCP_TRANSPORT=http`.
+
+```bash
+pnpm run build
+MCP_TRANSPORT=http MCP_HTTP_PORT=3333 node build/index.js
+```
+
+- **Endpoint:** `POST` (and `GET` for server-initiated streams) on `http://<host>:<port><path>` (default path `/mcp`).
+- **Protocol:** MCP `2026-07-28`. The protocol is stateless: there is no `initialize` handshake and no `mcp-session-id` header. Clients send their metadata in `_meta` on every request and discover capabilities via `server/discover`. Streamable HTTP also requires the `Mcp-Method` header (and `Mcp-Name` on `tools/call`).
+- **Backward compatibility:** Clients on `2025-11-25` and earlier are still served over the same endpoint, statelessly. Because no session is kept, the 2025 session operations (`GET` / `DELETE` with an `mcp-session-id`) answer `405`.
+- **Security:** Default bind is `127.0.0.1`. On a bare loopback bind, `Host` and `Origin` are both validated against the localhost set (DNS rebinding protection). Behind a reverse proxy, set `--http-allowed-hosts` to the public hostname; that turns off the localhost `Origin` default, since a browser client's `Origin` is its own site and never this server's hostname. Add `--http-allowed-origins` to restrict which client origins may reach the server. Do not expose the HTTP port to untrusted networks without authentication and TLS; it allows full use of your Backlog API key via MCP tools.
+
+Environment variables (CLI flags override when both are set):
+
+| Variable                   | Description                                                                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MCP_TRANSPORT`            | `stdio` (default) or `http`                                                                                                                                                       |
+| `MCP_HTTP_HOST`            | Bind address (default `127.0.0.1`)                                                                                                                                                |
+| `MCP_HTTP_PORT`            | Port (default `3333`)                                                                                                                                                             |
+| `MCP_HTTP_PATH`            | URL path (default `/mcp`)                                                                                                                                                         |
+| `MCP_HTTP_JSON_RESPONSE`   | `true` to prefer JSON responses over SSE (applies to `2026-07-28` clients only)                                                                                                   |
+| `MCP_HTTP_ALLOWED_HOSTS`   | Comma-separated allowed `Host` hostnames (port-agnostic). Required when binding to `0.0.0.0`; also the escape hatch for a loopback bind behind a proxy (DNS rebinding protection) |
+| `MCP_HTTP_ALLOWED_ORIGINS` | Comma-separated allowed `Origin` hostnames for browser-based clients. Defaults to the localhost set on a bare loopback bind, and to no `Origin` check otherwise                   |
+
+### OAuth 2.0 Authentication (Remote MCP)
+
+When exposing the MCP server over a network, you can enable OAuth 2.0 authentication so that each user authenticates with their own Backlog account instead of sharing a single API key.
+
+The server implements the [MCP Third-Party Authorization Flow](https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization) by acting as both an OAuth authorization server (for MCP clients) and an OAuth client (for Backlog).
+
+#### Prerequisites
+
+1. Register an OAuth application in your Backlog space:
+   - Go to your Backlog space → Personal Settings → Register Application
+   - Set the **Redirect URI** to `<MCP_SERVER_BASE_URL>/callback` (e.g., `https://mcp.example.com/callback`)
+   - Note the **Client ID** and **Client Secret**
+
+2. Set the following environment variables (in addition to `BACKLOG_DOMAIN`):
+
+| Variable                      | Description                                                     |
+| ----------------------------- | --------------------------------------------------------------- |
+| `BACKLOG_OAUTH_CLIENT_ID`     | OAuth Client ID from your Backlog application                   |
+| `BACKLOG_OAUTH_CLIENT_SECRET` | OAuth Client Secret from your Backlog application               |
+| `MCP_SERVER_BASE_URL`         | Public URL of your MCP server (e.g., `https://mcp.example.com`) |
+
+> **Note:** `BACKLOG_API_KEY` is **not required** when OAuth is enabled — each user authenticates with their own Backlog account.
+
+#### Example
+
+```bash
+BACKLOG_DOMAIN=your-space.backlog.com \
+BACKLOG_OAUTH_CLIENT_ID=your-client-id \
+BACKLOG_OAUTH_CLIENT_SECRET=your-client-secret \
+MCP_SERVER_BASE_URL=https://mcp.example.com \
+node build/index.js --transport http --http-host 0.0.0.0 --http-port 3333 \
+  --http-allowed-hosts mcp.example.com
+```
+
+`--http-allowed-hosts` is required in practice when binding to `0.0.0.0`: without it there is no DNS rebinding protection, and the server logs a warning at startup.
+
+The server automatically exposes the following OAuth endpoints when OAuth is enabled:
+
+| Endpoint                                        | Description                                                                                     |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `GET /.well-known/oauth-authorization-server`   | OAuth Authorization Server Metadata ([RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414)) |
+| `GET /.well-known/oauth-protected-resource/mcp` | OAuth Protected Resource Metadata ([RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728))   |
+| `POST /register`                                | Dynamic Client Registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591))         |
+| `GET /authorize`                                | Authorization endpoint (redirects to Backlog OAuth)                                             |
+| `GET /callback`                                 | Backlog OAuth callback                                                                          |
+| `POST /token`                                   | Token endpoint (authorization code & refresh token)                                             |
+
+MCP clients that support the MCP authorization specification will use these endpoints automatically.
+
+`POST /register` restricts which redirect URIs a client may register. A loopback
+URI (`http://localhost`, `http://127.0.0.1`, `http://[::1]`) is how an app running
+on the user's machine receives the authorization code, and is accepted from a
+client that declares `"application_type": "native"` — or, when the field is
+absent, from one whose redirect URIs are _all_ loopback. A client declaring
+`"application_type": "web"`, or mixing a remote `https:` URI with a loopback one
+without declaring itself, is rejected with `invalid_client_metadata`.
+
+> **Limitations:**
+>
+> - OAuth mode currently supports a single Backlog organization. It is not compatible with the multi-organization configuration.
+> - Client registrations and tokens are stored in memory and will be lost on server restart.
 
 ## Tool Configuration
 
@@ -179,24 +268,6 @@ Using selective toolsets can be helpful if the toolset list is too large for you
 
 > 🧩 Tip: `project` toolset is highly recommended, as many other tools rely on project data as an entry point.
 
-### Dynamic Toolset Discovery (Experimental)
-
-If you're using the MCP server with AI agents, you can enable dynamic discovery of toolsets at runtime:
-
-Enabling via CLI:
-
-```
---dynamic-toolsets
-```
-
-Or via environment variable::
-
-```
--e DYNAMIC_TOOLSETS=1 \
-```
-
-With dynamic toolsets enabled, the LLM will be able to list and activate toolsets on demand via tool interface.
-
 ## Available Tools
 
 ### Toolset: `space`
@@ -214,14 +285,15 @@ Tools for managing projects, categories, custom fields, and issue types.
 - `get_project_list`: Returns list of projects.
 - `add_project`: Creates a new project.
 - `get_project`: Returns information about a specific project.
+- `get_project_users`: Returns list of users in a specific project.
 - `update_project`: Updates an existing project.
-- `delete_project`: Deletes a project.
 
 ### Toolset: `issue`
 
 Tools for managing issues, their comments, and related items like priorities, categories, custom fields, issue types, resolutions, and watching lists.
 
 - `get_issue`: Returns information about a specific issue.
+- `get_issue_attachment`: Downloads one attachment of an issue. Returns it as image or embedded resource content, or as base64 with `format: "base64"`.
 - `get_issues`: Returns list of issues.
 - `count_issues`: Returns count of issues.
 - `add_issue`: Creates a new issue in the specified project.
@@ -229,8 +301,13 @@ Tools for managing issues, their comments, and related items like priorities, ca
 - `delete_issue`: Deletes an issue.
 - `get_issue_comments`: Returns list of comments for an issue.
 - `add_issue_comment`: Adds a comment to an issue.
+- `update_issue_comment`: Updates a comment on an issue.
+- `get_related_issues`: Returns list of issues related to a specific issue.
+- `add_related_issue`: Relates an issue to another issue.
+- `remove_related_issue`: Removes the relation between an issue and a related issue.
 - `get_priorities`: Returns list of priorities.
 - `get_categories`: Returns list of categories for a project.
+- `add_category`: Creates a new category for a project.
 - `get_custom_fields`: Returns list of custom fields for a project.
 - `get_issue_types`: Returns list of issue types for a project.
 - `get_resolutions`: Returns list of issue resolutions.
@@ -284,6 +361,7 @@ Tools for managing documents and document trees in Backlog projects.
 
 - `get_document_tree`: Returns the hierarchical tree of documents for a project, including folders and ne
 - `get_documents`: Returns a flat list of documents in a project or folder.
+- `get_document_comments`: Returns the comments on a document, including their replies.
 - `get_document`: Returns detailed information about a specific document, including metadata, content, an
 
 ## Usage Examples
@@ -330,9 +408,13 @@ Create a new pull request from branch "feature/new-feature" to "main" in the rep
 Show me all items I'm watching
 ```
 
-### i18n / Overriding Descriptions
+### Overriding Tool Descriptions
 
 You can override the descriptions of tools by creating a `.backlog-mcp-serverrc.json` file in your **home directory**.
+
+Almost all of these strings are the tool and parameter descriptions the model reads when it decides which tool to call and how to fill in its arguments, so overriding them is a way to steer tool selection — for example to disambiguate two similar tools, or to add a rule your team follows — rather than a way to change the language of the answers you get. The model answers in whatever language you ask in, regardless of the language these descriptions are written in.
+
+A small number of keys are validation error messages instead (for example `PROJECT_ID_OR_KEY_REQUIRED`). Those are returned in the tool result when a call is rejected, so they can reach you by way of the model's reply.
 
 The file should contain a JSON object with the tool names as keys and the new descriptions as values.  
 For example:
@@ -348,7 +430,9 @@ When the server starts, it determines the final description for each tool based 
 
 1. Environment variables (e.g., `BACKLOG_MCP_TOOL_ADD_ISSUE_COMMENT_DESCRIPTION`)
 2. Entries in `.backlog-mcp-serverrc.json` - Supported configuration file formats: .json, .yaml, .yml
-3. Built-in fallback values (English)
+3. Built-in defaults
+
+Empty or non-string values are ignored at every level, and the built-in default is used instead.
 
 Sample config:
 
@@ -378,35 +462,25 @@ Sample config:
 }
 ```
 
-### Exporting Current Translations
+### Exporting Current Descriptions
 
-You can export the current default translations (including any overrides) by running the binary with the --export-translations flag.
+You can export the current descriptions (including any overrides) by running the binary with the `--export-descriptions` flag. This flag was previously called `--export-translations`; the old name still works but prints a deprecation notice and will be removed in a future release.
 
-This will print all tool descriptions to stdout, including any customizations you have made.
+This prints every key that is resolved while the tool list is built, with its current value, including any customizations you have made. That covers all tool and parameter descriptions, and it is the practical way to discover key names.
+
+It does not cover the validation error messages, because those keys are only resolved when a call is actually rejected. They are still overridable by the same rules; you just have to read them out of the source.
 
 Example:
 
 ```bash
-docker run -i --rm ghcr.io/nulab/backlog-mcp-server node build/index.js --export-translations
+docker run -i --rm ghcr.io/nulab/backlog-mcp-server node build/index.js --export-descriptions
 ```
 
 or
 
 ```bash
-npx github:nulab/backlog-mcp-server --export-translations
+npx github:nulab/backlog-mcp-server --export-descriptions
 ```
-
-### Using a Japanese Translation Template
-
-A sample Japanese configuration file is provided at:
-
-```bash
-translationConfig/.backlog-mcp-serverrc.json.example
-```
-
-To use it, copy it to your home directory as .backlog-mcp-serverrc.json:
-
-You can then edit the file to customize the descriptions as needed.
 
 ### Using Environment Variables
 
@@ -465,7 +539,17 @@ This is especially useful if you're using multiple MCP servers or tools in the s
 
 ### Response Optimization & Token Limits
 
-#### Field Selection (GraphQL-style)
+#### Response Compaction
+
+Tool results are compacted before they are returned. This is always on, and applies to every tool except `get_issue_attachment`, which returns the file itself:
+
+- A user nested in a result (`createdUser`, `assignee`, `stars[].presenter`, a notification's `sender`, …) is reduced to `id`, `userId` and `name`. A user that *is* the result — `get_myself`, the items of `get_users` or `get_project_users` — is returned whole.
+- A nested project (each activity's and notification's `project`) is reduced to `id`, `projectKey` and `name`, and a nested issue (a pull request's or notification's `issue`) to `id`, `issueKey`, `summary` and `status`. A project or issue that is the result — `get_project`, `get_issue`, the items of `get_project_list` or `get_issues` — is returned whole, and so is the issue of each item of `get_watching_list_items`.
+- Nested entities (statuses, issue types, categories, milestones, custom field items, …) omit `color` and `displayOrder`, and nested milestones also omit `description`. Tools that list these themselves (`get_issue_types`, `get_categories`, `get_version_milestone_list`, …) return them whole.
+- Fields that are `null`, an empty string or an empty array are omitted. `0`, `false` and `{}` are kept. This also applies to a field named in `fields`: an empty one is left out rather than returned as empty.
+- JSON is returned without indentation.
+
+#### Field Selection
 
 ```
 --optimize-response
@@ -477,17 +561,18 @@ Or environment variable:
 OPTIMIZE_RESPONSE=1
 ```
 
-Then, request only specific fields:
+Tools that return a **list** then take an optional `fields` parameter: a list of
+top-level field names from that tool's own result, published as an enum so a name
+the tool does not have is rejected rather than ignored. Tools that return a single
+record do not get it — the parameter costs schema on every session, and one record
+has almost nothing to trim.
 
 ```
-get_project(projectIdOrKey: "PROJECT-KEY", fields: "{ name key description }")
+get_project(projectIdOrKey: "PROJECT-KEY", fields: ["name", "key", "description"])
 ```
 
-The AI will use field selection to optimize the response:
-
-```
-get_project(projectIdOrKey: "PROJECT-KEY", fields: "{ name key description }")
-```
+Omitting `fields` returns the whole result. Selection is one level deep: naming an
+object or array field returns it whole.
 
 Benefits:
 
@@ -512,6 +597,22 @@ MAX_TOKENS=10000
 If a response exceeds the limit, it will be truncated with a warning.
 
 > Note: This is a best-effort mitigation, not a guaranteed enforcement.
+
+### Logging
+
+The server logs to **stderr** (stdout carries the JSON-RPC stream on the stdio transport).
+
+| Variable    | Description                                                                                                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LOG_LEVEL` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. Defaults to `error` when `NODE_ENV` is `production` — which is also the default when `NODE_ENV` is unset — and to `debug` otherwise. An unrecognised value is reported and the default is used. |
+
+`NODE_ENV` still selects the output *format*: any value other than `production` switches to human-readable `pino-pretty` output when that package is available. Use `LOG_LEVEL`, not `NODE_ENV`, to change how much is logged, so that a deployment keeps structured JSON:
+
+`pino-pretty` is a development dependency, so neither the published npm package nor the container image carries a copy. In those, logs are structured JSON whatever `NODE_ENV` says, and `LOG_LEVEL` is the only setting that changes the output.
+
+```
+LOG_LEVEL=info node build/index.js --transport http
+```
 
 ### Full Custom Configuration Example
 
@@ -546,8 +647,7 @@ This section demonstrates advanced configuration using multiple environment vari
         "MAX_TOKENS": "10000",
         "OPTIMIZE_RESPONSE": "1",
         "PREFIX": "backlog_",
-        "ENABLE_TOOLSETS": "space,project,issue",
-        "ENABLE_DYNAMIC_TOOLSETS": "1"
+        "ENABLE_TOOLSETS": "space,project,issue"
       }
     }
   }
@@ -559,7 +659,7 @@ This section demonstrates advanced configuration using multiple environment vari
 ### Running Tests
 
 ```bash
-npm test
+pnpm test
 ```
 
 ### Adding New Tools
@@ -573,8 +673,13 @@ npm test
 
 The server supports several command line options:
 
-- `--export-translations`: Export all translation keys and values
-- `--optimize-response`: Enable GraphQL-style field selection
+- `--transport stdio|http`: MCP transport (default: stdio). Use `http` for Streamable HTTP.
+- `--http-host`, `--http-port`, `--http-path`: HTTP bind address, port, and path (defaults: `127.0.0.1`, `3333`, `/mcp`).
+- `--http-json-response`: Prefer JSON responses over SSE. Applies to `2026-07-28` clients only; the backward-compatible `2025-11-25` path is served with the SDK's default response shaping.
+- `--http-allowed-hosts`: Comma-separated allowed `Host` hostnames (port-agnostic). Needed when binding to all interfaces, or on a loopback bind behind a reverse proxy.
+- `--http-allowed-origins`: Comma-separated allowed `Origin` hostnames for browser-based clients. Defaults to the localhost set on a bare loopback bind, and to no `Origin` check otherwise.
+- `--export-descriptions`: Export the description keys and values resolved when building the tool list. Was named `--export-translations`; that spelling still works as a deprecated alias and will be removed in a future release
+- `--optimize-response`: Add a `fields` parameter to each tool for selecting which result fields to return
 - `--max-tokens=NUMBER`: Set maximum token limit for responses
 - `--prefix=STRING`: Optional string prefix to prepend to all tool names (default: "")
 - `--enable-toolsets <toolsets...>`: Specify which toolsets to enable (comma-separated or multiple arguments). Defaults to "all".
@@ -585,6 +690,12 @@ Example:
 
 ```bash
 node build/index.js --optimize-response --max-tokens=100000 --prefix="backlog_" --enable-toolsets space,issue
+```
+
+HTTP example:
+
+```bash
+node build/index.js --transport http --http-port 3333 --http-path /mcp
 ```
 
 ## Multi-Organization Support
@@ -628,7 +739,9 @@ BACKLOG_API_KEY=your-api-key
 
 ### Tool Usage
 
-All normal tools accept an optional `organization` input field. When provided, the tool call is routed to that Backlog organization.
+When multi-organization env vars are configured, all normal tools accept an optional `organization` input field. When provided, the tool call is routed to that Backlog organization.
+
+In single-organization mode the field is not published, since there would be only one organization to route to. Omitting it keeps roughly 8 KB of tool schema out of every `tools/list` response.
 
 Examples:
 
@@ -646,7 +759,7 @@ If `organization` is omitted:
 
 ### Organization Discovery
 
-The server provides a `list_organizations` tool that returns the configured organization names, their domains, and which one is the default.
+In multi-organization mode the server provides a `list_organizations` tool that returns the configured organization names, their domains, and which one is the default. It is not registered in single-organization mode.
 
 Example response:
 

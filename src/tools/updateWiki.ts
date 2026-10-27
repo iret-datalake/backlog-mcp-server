@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { patchWiki } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { WikiSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const updateWikiSchema = buildToolSchema((t) => ({
   wikiId: z
@@ -28,12 +30,9 @@ const updateWikiSchema = buildToolSchema((t) => ({
 }));
 
 export const updateWikiTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
-): ToolDefinition<
-  ReturnType<typeof updateWikiSchema>,
-  (typeof WikiSchema)['shape']
-> => {
+  backlog: Client,
+  { t }: DescriptionHelper
+): ToolDefinition<ReturnType<typeof updateWikiSchema>, Entity.Wiki.Wiki> => {
   return {
     name: 'update_wiki',
     description: t(
@@ -41,13 +40,27 @@ export const updateWikiTool = (
       'Updates an existing wiki page'
     ),
     schema: z.object(updateWikiSchema(t)),
-    outputSchema: WikiSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Wiki.Wiki>()([
+      'id',
+      'projectId',
+      'name',
+      'content',
+      'tags',
+      'attachments',
+      'sharedFiles',
+      'stars',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+    ]),
     importantFields: ['id', 'name', 'content', 'updatedUser'],
     handler: async ({ wikiId, name, content, mailNotify }) => {
       const wikiIdNumber =
         typeof wikiId === 'string' ? parseInt(wikiId, 10) : wikiId;
 
-      return backlog.patchWiki(wikiIdNumber, {
+      return patchWiki(backlog, wikiIdNumber, {
         name,
         content,
         mailNotify,

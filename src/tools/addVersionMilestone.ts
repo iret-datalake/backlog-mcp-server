@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { postVersions } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { VersionSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
 const addVersionMilestoneSchema = buildToolSchema((t) => ({
@@ -41,11 +43,11 @@ const addVersionMilestoneSchema = buildToolSchema((t) => ({
 }));
 
 export const addVersionMilestoneTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof addVersionMilestoneSchema>,
-  (typeof VersionSchema)['shape']
+  Entity.Project.Version
 > => {
   return {
     name: 'add_version_milestone',
@@ -54,7 +56,17 @@ export const addVersionMilestoneTool = (
       'Creates a new version milestone'
     ),
     schema: z.object(addVersionMilestoneSchema(t)),
-    outputSchema: VersionSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Project.Version>()([
+      'id',
+      'projectId',
+      'name',
+      'description',
+      'startDate',
+      'releaseDueDate',
+      'archived',
+      'displayOrder',
+    ]),
     importantFields: [
       'id',
       'name',
@@ -71,7 +83,7 @@ export const addVersionMilestoneTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.postVersions(result.value, params);
+      return postVersions(backlog, result.value, params);
     },
   };
 };

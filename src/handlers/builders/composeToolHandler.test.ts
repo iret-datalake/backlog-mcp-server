@@ -1,10 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
-import {
-  CallToolResult,
-  ServerNotification,
-  ServerRequest,
-} from '@modelcontextprotocol/sdk/types.js';
+import { describe, expect, it, vi } from 'vite-plus/test';
+import { CallToolResult, ServerContext } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { ErrorLike } from '../../types/result.js';
 import { ToolDefinition } from '../../types/tool.js';
@@ -15,15 +10,10 @@ const dummyErrorHandler = (err: unknown): ErrorLike => ({
   message: 'Handled: ' + (err as Error).message,
 });
 
-const dummyExtra = {} as RequestHandlerExtra<ServerRequest, ServerNotification>;
+const dummyExtra = {} as ServerContext;
 
 describe('composeToolHandler', () => {
   const baseSchema = z.object({
-    name: z.string(),
-  });
-
-  const outputSchema = z.object({
-    id: z.number(),
     name: z.string(),
   });
 
@@ -31,20 +21,52 @@ describe('composeToolHandler', () => {
     name: 'get_sample',
     description: 'Returns sample',
     schema: baseSchema,
-    outputSchema,
+    outputFields: ['id', 'name'],
     handler: async () => ({ id: 1, name: 'Sample' }),
     importantFields: ['id', 'name'],
+    returnsList: true,
   };
 
-  it("adds 'fields' when useFields is true", async () => {
-    const composed = composeToolHandler(tool, {
+  const singleRecordTool: ToolDefinition<any, any> = {
+    ...tool,
+    returnsList: false,
+  };
+
+  it("leaves 'fields' optional so a call without a selection still works", async () => {
+    const { schema, handler: composed } = composeToolHandler(tool, {
       useFields: true,
       maxTokens: 500,
     });
 
-    expect(tool.schema.shape).toHaveProperty('fields');
+    expect(schema.safeParse({ name: 'Sample' }).success).toBe(true);
 
-    const result = await composed({ id: 123, fields: '{ id }' }, dummyExtra);
+    const result = await composed({ name: 'Sample' }, dummyExtra);
+    const content = (result as CallToolResult).content[0];
+    expect(content.type).toBe('text');
+    if (content.type === 'text') {
+      expect(content.text).toContain('id');
+      expect(content.text).toContain('name');
+    }
+  });
+
+  it("does not add 'fields' to a tool that returns one record", () => {
+    const { schema } = composeToolHandler(singleRecordTool, {
+      useFields: true,
+      maxTokens: 500,
+    });
+
+    expect(schema.shape).not.toHaveProperty('fields');
+  });
+
+  it("adds 'fields' when useFields is true", async () => {
+    const { schema, handler: composed } = composeToolHandler(tool, {
+      useFields: true,
+      maxTokens: 500,
+    });
+
+    expect(schema.shape).toHaveProperty('fields');
+
+    const result = await composed({ id: 123, fields: ['id'] }, dummyExtra);
     const content = (result as CallToolResult).content[0];
     expect(content.type).toBe('text');
     if (content.type === 'text') {
@@ -63,13 +85,15 @@ describe('composeToolHandler', () => {
       })),
     };
 
-    const composed = composeToolHandler(toolWithoutFields, {
-      useFields: false,
-      maxTokens: 500,
-    });
+    const { schema, handler: composed } = composeToolHandler(
+      toolWithoutFields,
+      {
+        useFields: false,
+        maxTokens: 500,
+      }
+    );
 
-    expect(toolWithoutFields.schema.shape).not.toHaveProperty('fields');
-    expect(toolWithoutFields.schema.shape).toHaveProperty('organization');
+    expect(schema.shape).not.toHaveProperty('fields');
 
     const result = await composed({ id: 456 }, dummyExtra);
     const content = (result as CallToolResult).content[0];
@@ -81,24 +105,54 @@ describe('composeToolHandler', () => {
   });
 
   it('extends schema and composes handler with field picking and token limit', async () => {
-    const composed = composeToolHandler(tool, {
+    const { handler: composed } = composeToolHandler(tool, {
       useFields: true,
       errorHandler: dummyErrorHandler,
       maxTokens: 100,
     });
 
-    const input = { name: 'test', fields: '{ id name }' };
+    const input = { name: 'test', fields: ['id', 'name'] };
     const result = await composed(input, {} as any);
     expect(result).toHaveProperty('content');
     const content = result.content[0];
     expect(content.type).toBe('text');
     if (content.type === 'text') {
-      expect(content.text).toContain('"id": 1');
-      expect(content.text).toContain('"name": "Sample"');
+      expect(content.text).toContain('"id":1');
+      expect(content.text).toContain('"name":"Sample"');
     }
   });
 
-  it("adds 'organization' to the schema when composing handlers", async () => {
+  it('compacts the result before returning it', async () => {
+    const issueTool: ToolDefinition<any, any> = {
+      ...singleRecordTool,
+      handler: async () => ({
+        id: 1,
+        resolution: null,
+        attachments: [],
+        createdUser: {
+          id: 7,
+          userId: 'alice',
+          name: 'Alice',
+          roleType: 1,
+          mailAddress: 'alice@example.com',
+        },
+      }),
+    };
+    const { handler: composed } = composeToolHandler(issueTool, {
+      useFields: false,
+      errorHandler: dummyErrorHandler,
+      maxTokens: 1000,
+    });
+
+    const result = await composed({ name: 'test' }, dummyExtra);
+
+    expect(result.content[0]).toEqual({
+      type: 'text',
+      text: '{"id":1,"createdUser":{"id":7,"userId":"alice","name":"Alice"}}',
+    });
+  });
+
+  it("adds 'organization' to the returned schema when useOrganization is true", async () => {
     const orgTool: ToolDefinition<any, any> = {
       ...tool,
       schema: z.object({
@@ -106,12 +160,82 @@ describe('composeToolHandler', () => {
       }),
     };
 
-    composeToolHandler(orgTool, {
+    const { schema } = composeToolHandler(orgTool, {
+      useFields: true,
+      maxTokens: 100,
+      useOrganization: true,
+    });
+
+    expect(schema.shape).toHaveProperty('organization');
+  });
+
+  // The toolset group is shared by every per-request server on the HTTP transport,
+  // so a mutation would leak across requests.
+  it('leaves the tool definition untouched', () => {
+    const pristine: ToolDefinition<any, any> = {
+      ...tool,
+      schema: z.object({ name: z.string() }),
+    };
+    const before = pristine.schema;
+
+    composeToolHandler(pristine, { useFields: true, maxTokens: 100 });
+    composeToolHandler(pristine, { useFields: true, maxTokens: 100 });
+
+    expect(pristine.schema).toBe(before);
+    expect(Object.keys(pristine.schema.shape)).toEqual(['name']);
+  });
+
+  it("omits 'organization' when useOrganization is false", async () => {
+    const soloTool: ToolDefinition<any, any> = {
+      ...tool,
+      schema: z.object({ name: z.string() }),
+    };
+
+    const { schema } = composeToolHandler(soloTool, {
+      useFields: true,
+      maxTokens: 100,
+      useOrganization: false,
+    });
+
+    expect(schema.shape).not.toHaveProperty('organization');
+    expect(schema.shape).toHaveProperty('fields');
+  });
+
+  it('honours useFields per call on a reused definition', () => {
+    const reused: ToolDefinition<any, any> = {
+      ...tool,
+      schema: z.object({ name: z.string() }),
+    };
+
+    const withFields = composeToolHandler(reused, {
       useFields: true,
       maxTokens: 100,
     });
+    expect(withFields.schema.shape).toHaveProperty('fields');
 
-    expect(orgTool.schema.shape).toHaveProperty('organization');
+    const withoutFields = composeToolHandler(reused, {
+      useFields: false,
+      maxTokens: 100,
+    });
+    expect(withoutFields.schema.shape).not.toHaveProperty('fields');
+  });
+
+  // Over the wire the schema strips the field first; this covers a handler that still receives it.
+  it('tolerates an organization reaching the handler when not advertised', async () => {
+    const orgTool: ToolDefinition<any, any> = {
+      ...tool,
+      schema: z.object({ name: z.string() }),
+      handler: async () => ({ id: 1, name: 'Sample' }),
+    };
+
+    const { handler: composed } = composeToolHandler(orgTool, {
+      useFields: false,
+      maxTokens: 100,
+      useOrganization: false,
+    });
+
+    const result = await composed({ organization: 'primary' }, dummyExtra);
+    expect((result as CallToolResult).isError).not.toBe(true);
   });
 
   it('handles error with provided errorHandler', async () => {
@@ -122,13 +246,13 @@ describe('composeToolHandler', () => {
       },
     };
 
-    const composed = composeToolHandler(errorTool, {
+    const { handler: composed } = composeToolHandler(errorTool, {
       useFields: true,
       errorHandler: dummyErrorHandler,
       maxTokens: 100,
     });
 
-    const input = { name: 'test', fields: '{ id name }' };
+    const input = { name: 'test', fields: ['id', 'name'] };
     const result = await composed(input, {} as any);
     expect(result).toHaveProperty('isError', true);
     const content = result.content[0];

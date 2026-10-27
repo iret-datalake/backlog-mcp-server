@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getProjects } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { ProjectSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const getProjectListSchema = buildToolSchema((t) => ({
   archived: z
@@ -26,11 +28,11 @@ const getProjectListSchema = buildToolSchema((t) => ({
 }));
 
 export const getProjectListTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getProjectListSchema>,
-  (typeof ProjectSchema)['shape']
+  Entity.Project.Project
 > => {
   return {
     name: 'get_project_list',
@@ -39,9 +41,29 @@ export const getProjectListTool = (
       'Returns list of projects'
     ),
     schema: z.object(getProjectListSchema(t)),
-    outputSchema: ProjectSchema,
+    returnsList: true,
+    outputFields: outputFields<Entity.Project.Project>()([
+      'id',
+      'projectKey',
+      'name',
+      'chartEnabled',
+      'useResolvedForChart',
+      'subtaskingEnabled',
+      'projectLeaderCanEditProjectLeader',
+      'useWiki',
+      'useFileSharing',
+      'useWikiTreeView',
+      'useOriginalImageSizeAtWiki',
+      'useSubversion',
+      'useGit',
+      'textFormattingRule',
+      'archived',
+      'displayOrder',
+      'useDevAttributes',
+      'grandchildIssueEnabled',
+    ]),
     importantFields: ['id', 'projectKey', 'name'],
     handler: async ({ archived, all }) =>
-      backlog.getProjects({ archived, all }),
+      getProjects(backlog, { archived, all }),
   };
 };

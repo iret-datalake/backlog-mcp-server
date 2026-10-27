@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { patchPullRequestComments } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { PullRequestCommentSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey, resolveIdOrName } from '../utils/resolveIdOrKey.js';
 
 const updatePullRequestCommentSchema = buildToolSchema((t) => ({
@@ -48,11 +50,11 @@ const updatePullRequestCommentSchema = buildToolSchema((t) => ({
 }));
 
 export const updatePullRequestCommentTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof updatePullRequestCommentSchema>,
-  (typeof PullRequestCommentSchema)['shape']
+  Entity.PullRequest.Comment
 > => {
   return {
     name: 'update_pull_request_comment',
@@ -61,7 +63,17 @@ export const updatePullRequestCommentTool = (
       'Updates a comment on a pull request'
     ),
     schema: z.object(updatePullRequestCommentSchema(t)),
-    outputSchema: PullRequestCommentSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.PullRequest.Comment>()([
+      'id',
+      'content',
+      'changeLog',
+      'createdUser',
+      'created',
+      'updated',
+      'stars',
+      'notifications',
+    ]),
     importantFields: ['id', 'content', 'createdUser', 'updated'],
     handler: async ({
       projectId,
@@ -88,7 +100,8 @@ export const updatePullRequestCommentTool = (
       if (!repoResult.ok) {
         throw repoResult.error;
       }
-      return backlog.patchPullRequestComments(
+      return patchPullRequestComments(
+        backlog,
         result.value,
         String(repoResult.value),
         number,

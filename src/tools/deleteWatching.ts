@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { deletehWatchingListItem } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { WatchingListItemSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const deleteWatchingSchema = buildToolSchema((t) => ({
   watchId: z
@@ -11,11 +13,11 @@ const deleteWatchingSchema = buildToolSchema((t) => ({
 }));
 
 export const deleteWatchingTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof deleteWatchingSchema>,
-  (typeof WatchingListItemSchema)['shape']
+  Entity.WatchingList.WatchingListItem
 > => {
   return {
     name: 'delete_watching',
@@ -24,7 +26,17 @@ export const deleteWatchingTool = (
       'Deletes a watch from an issue'
     ),
     schema: z.object(deleteWatchingSchema(t)),
-    outputSchema: WatchingListItemSchema,
-    handler: async ({ watchId }) => backlog.deletehWatchingListItem(watchId),
+    returnsList: false,
+    outputFields: outputFields<Entity.WatchingList.WatchingListItem>()([
+      'id',
+      'resourceAlreadyRead',
+      'note',
+      'type',
+      'issue',
+      'lastContentUpdated',
+      'created',
+      'updated',
+    ]),
+    handler: async ({ watchId }) => deletehWatchingListItem(backlog, watchId),
   };
 };

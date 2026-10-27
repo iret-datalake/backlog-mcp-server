@@ -1,17 +1,19 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { resetNotificationsMarkAsRead } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { NotificationCountSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const resetUnreadNotificationCountSchema = buildToolSchema((_t) => ({}));
 
 export const resetUnreadNotificationCountTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof resetUnreadNotificationCountSchema>,
-  (typeof NotificationCountSchema)['shape']
+  Entity.Notification.NotificationCount
 > => {
   return {
     name: 'reset_unread_notification_count',
@@ -20,7 +22,10 @@ export const resetUnreadNotificationCountTool = (
       'Reset unread notification count'
     ),
     schema: z.object(resetUnreadNotificationCountSchema(t)),
-    outputSchema: NotificationCountSchema,
-    handler: async () => backlog.resetNotificationsMarkAsRead(),
+    returnsList: false,
+    outputFields: outputFields<Entity.Notification.NotificationCount>()([
+      'count',
+    ]),
+    handler: async () => resetNotificationsMarkAsRead(backlog),
   };
 };

@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { postIssueComments } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { IssueCommentSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey } from '../utils/resolveIdOrKey.js';
 
 const addIssueCommentSchema = buildToolSchema((t) => ({
@@ -37,11 +39,11 @@ const addIssueCommentSchema = buildToolSchema((t) => ({
 }));
 
 export const addIssueCommentTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof addIssueCommentSchema>,
-  (typeof IssueCommentSchema)['shape']
+  Entity.Issue.Comment
 > => {
   return {
     name: 'add_issue_comment',
@@ -50,7 +52,19 @@ export const addIssueCommentTool = (
       'Adds a comment to an issue'
     ),
     schema: z.object(addIssueCommentSchema(t)),
-    outputSchema: IssueCommentSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Issue.Comment>()([
+      'id',
+      'projectId',
+      'issueId',
+      'content',
+      'changeLog',
+      'createdUser',
+      'created',
+      'updated',
+      'stars',
+      'notifications',
+    ]),
     handler: async ({
       issueId,
       issueKey,
@@ -62,7 +76,7 @@ export const addIssueCommentTool = (
       if (!result.ok) {
         throw result.error;
       }
-      return backlog.postIssueComments(result.value, {
+      return postIssueComments(backlog, result.value, {
         content,
         notifiedUserId,
         attachmentId,

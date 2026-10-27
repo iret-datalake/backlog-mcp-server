@@ -28,9 +28,6 @@ export type CustomFieldFilterInput =
       value: number | number[];
     };
 
-/**
- * Converts Backlog-style customFields array into proper payload format
- */
 export function customFieldsToPayload(
   customFields: CustomFieldInput[] | undefined
 ): Record<string, string | number | string[] | number[] | undefined> {
@@ -92,20 +89,21 @@ export function customFieldFiltersToPayload(
         break;
       }
       case 'list': {
-        if (Array.isArray(field.value)) {
-          const values = field.value.filter((value) => Number.isFinite(value));
-          if (values.length > 0) {
-            result[`${baseKey}[]`] = values;
-          }
-        } else if (Number.isFinite(field.value)) {
-          result[baseKey] = field.value;
+        // Always an array: Backlog matches a list custom field only as `customField_1[0]=…`.
+        // `customField_1=…` and `customField_1[][0]=…` are silently ignored and every issue
+        // comes back, so a filtered query is indistinguishable from an unfiltered one.
+        const values = (
+          Array.isArray(field.value) ? field.value : [field.value]
+        ).filter((value) => Number.isFinite(value));
+        if (values.length > 0) {
+          result[baseKey] = values;
         }
         break;
       }
       default: {
         const exhaustiveCheck: never = field;
         throw new Error(
-          `Unsupported custom field filter type: ${exhaustiveCheck}`
+          `Unsupported custom field filter type: ${JSON.stringify(exhaustiveCheck)}`
         );
       }
     }

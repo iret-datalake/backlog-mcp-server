@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getSpaceActivities } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import {
-  ActivitySchema,
-  ActivityTypeSchema,
-} from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { ActivityTypeSchema } from '../types/zod/activityType.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const getSpaceActivitiesSchema = buildToolSchema((t) => ({
   activityTypeId: z
@@ -37,11 +37,11 @@ const getSpaceActivitiesSchema = buildToolSchema((t) => ({
 }));
 
 export const getSpaceActivitiesTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getSpaceActivitiesSchema>,
-  (typeof ActivitySchema)['shape']
+  Entity.Activity.Activity
 > => {
   return {
     name: 'get_space_activities',
@@ -50,9 +50,18 @@ export const getSpaceActivitiesTool = (
       'Returns list of space activities'
     ),
     schema: z.object(getSpaceActivitiesSchema(t)),
-    outputSchema: ActivitySchema,
+    returnsList: true,
+    outputFields: outputFields<Entity.Activity.Activity>()([
+      'id',
+      'project',
+      'type',
+      'content',
+      'notifications',
+      'createdUser',
+      'created',
+    ]),
     handler: async ({ activityTypeId, minId, maxId, count, order }) =>
-      backlog.getSpaceActivities({
+      getSpaceActivities(backlog, {
         activityTypeId,
         minId,
         maxId,

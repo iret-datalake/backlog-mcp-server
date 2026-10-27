@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getPullRequestsCount } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { PullRequestCountSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey, resolveIdOrName } from '../utils/resolveIdOrKey.js';
 
 const getPullRequestsCountSchema = buildToolSchema((t) => ({
@@ -55,11 +57,11 @@ const getPullRequestsCountSchema = buildToolSchema((t) => ({
 }));
 
 export const getPullRequestsCountTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getPullRequestsCountSchema>,
-  (typeof PullRequestCountSchema)['shape']
+  Entity.PullRequest.PullRequestCount
 > => {
   return {
     name: 'get_pull_requests_count',
@@ -68,7 +70,10 @@ export const getPullRequestsCountTool = (
       'Returns count of pull requests for a repository'
     ),
     schema: z.object(getPullRequestsCountSchema(t)),
-    outputSchema: PullRequestCountSchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.PullRequest.PullRequestCount>()([
+      'count',
+    ]),
     handler: async ({ projectId, projectKey, repoId, repoName, ...params }) => {
       const result = resolveIdOrKey(
         'project',
@@ -86,7 +91,8 @@ export const getPullRequestsCountTool = (
       if (!repoResult.ok) {
         throw repoResult.error;
       }
-      return backlog.getPullRequestsCount(
+      return getPullRequestsCount(
+        backlog,
         result.value,
         String(repoResult.value),
         params

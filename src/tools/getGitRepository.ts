@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getGitRepository } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { GitRepositorySchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey, resolveIdOrName } from '../utils/resolveIdOrKey.js';
 
 const getGitRepositorySchema = buildToolSchema((t) => ({
@@ -35,11 +37,11 @@ const getGitRepositorySchema = buildToolSchema((t) => ({
 }));
 
 export const getGitRepositoryTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getGitRepositorySchema>,
-  (typeof GitRepositorySchema)['shape']
+  Entity.Git.GitRepository
 > => {
   return {
     name: 'get_git_repository',
@@ -48,7 +50,22 @@ export const getGitRepositoryTool = (
       'Returns information about a specific Git repository'
     ),
     schema: z.object(getGitRepositorySchema(t)),
-    outputSchema: GitRepositorySchema,
+    returnsList: false,
+    outputFields: outputFields<Entity.Git.GitRepository>()([
+      'id',
+      'projectId',
+      'name',
+      'description',
+      'hookUrl',
+      'httpUrl',
+      'sshUrl',
+      'displayOrder',
+      'pushedAt',
+      'createdUser',
+      'created',
+      'updatedUser',
+      'updated',
+    ]),
     handler: async ({ projectId, projectKey, repoId, repoName }) => {
       const result = resolveIdOrKey(
         'project',
@@ -66,7 +83,7 @@ export const getGitRepositoryTool = (
       if (!repoResult.ok) {
         throw repoResult.error;
       }
-      return backlog.getGitRepository(result.value, String(repoResult.value));
+      return getGitRepository(backlog, result.value, String(repoResult.value));
     },
   };
 };

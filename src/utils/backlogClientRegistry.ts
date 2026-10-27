@@ -1,5 +1,10 @@
-import { Backlog } from 'backlog-js';
+import { createClient } from 'backlog-js';
+import type { Client } from 'backlog-js';
+import { getCurrentAccessToken } from '../auth/backlogAuthContext.js';
 import { getCurrentOrganization } from './backlogOrganizationContext.js';
+import packageJson from '../../package.json' with { type: 'json' };
+
+const USER_AGENT = `backlog-mcp-server/${packageJson.version}`;
 
 export type BacklogOrganizationInfo = {
   name: string;
@@ -7,13 +12,16 @@ export type BacklogOrganizationInfo = {
   isDefault: boolean;
 };
 
-export type BacklogClientResolver = (organization?: string) => Backlog;
+export type BacklogClientResolver = (organization?: string) => Client;
 
 export type BacklogClientRegistry = {
   resolveClient: BacklogClientResolver;
-  createScopedClient: () => Backlog;
+  createScopedClient: () => Client;
   listOrganizations: () => BacklogOrganizationInfo[];
   getDefaultOrganization: () => string | undefined;
+  // Keyed on the configured mode, not the organization count, so a multi-org
+  // setup that declares one space still exposes the `organization` parameter.
+  isMultiOrganization: boolean;
 };
 
 type Environment = Record<string, string | undefined>;
@@ -42,7 +50,7 @@ export function createBacklogClientRegistry(
   }
 
   const defaultName = 'default';
-  const client = new Backlog({ host: domain, apiKey });
+  const client = createClient({ host: domain, apiKey, userAgent: USER_AGENT });
 
   const info: BacklogOrganizationInfo = {
     name: defaultName,
@@ -71,6 +79,7 @@ export function createBacklogClientRegistry(
       }),
     listOrganizations: () => [info],
     getDefaultOrganization: () => defaultName,
+    isMultiOrganization: false,
   };
 }
 
@@ -138,7 +147,7 @@ function createMultiOrganizationRegistryFromEnv(
     );
   }
 
-  const clients = new Map<string, Backlog>();
+  const clients = new Map<string, Client>();
   // At this point, all organizations have been validated to have both domain and apiKey
   const validatedOrganizations = organizations as Map<
     string,
@@ -148,9 +157,10 @@ function createMultiOrganizationRegistryFromEnv(
     ([name, config]) => {
       clients.set(
         name,
-        new Backlog({
+        createClient({
           host: config.domain as string,
           apiKey: config.apiKey as string,
+          userAgent: USER_AGENT,
         })
       );
 
@@ -182,13 +192,14 @@ function createMultiOrganizationRegistryFromEnv(
       }),
     listOrganizations: () => organizationInfo,
     getDefaultOrganization: () => defaultOrganization,
+    isMultiOrganization: true,
   };
 }
 
 function resolveKnownClient(
-  clients: Map<string, Backlog>,
+  clients: Map<string, Client>,
   organization: string
-): Backlog {
+): Client {
   const client = clients.get(organization);
 
   if (!client) {
@@ -200,7 +211,39 @@ function resolveKnownClient(
   return client;
 }
 
-function createBacklogClientProxy(resolveClient: () => Backlog): Backlog {
+export function createOAuthBacklogClientRegistry(
+  domain: string
+): BacklogClientRegistry {
+  const defaultName = 'default';
+  const info: BacklogOrganizationInfo = {
+    name: defaultName,
+    domain,
+    isDefault: true,
+  };
+
+  const resolveOAuthClient = (): Client => {
+    const token = getCurrentAccessToken();
+    if (!token) {
+      throw new Error('No OAuth access token in current request context');
+    }
+    return createClient({
+      host: domain,
+      accessToken: token,
+      userAgent: USER_AGENT,
+    });
+  };
+
+  return {
+    resolveClient: () => resolveOAuthClient(),
+    createScopedClient: () => createBacklogClientProxy(resolveOAuthClient),
+    listOrganizations: () => [info],
+    getDefaultOrganization: () => defaultName,
+    // OAuth authorises against one Backlog domain per server.
+    isMultiOrganization: false,
+  };
+}
+
+function createBacklogClientProxy(resolveClient: () => Client): Client {
   return new Proxy(
     {},
     {
@@ -215,5 +258,5 @@ function createBacklogClientProxy(resolveClient: () => Backlog): Backlog {
         return value;
       },
     }
-  ) as Backlog;
+  ) as Client;
 }

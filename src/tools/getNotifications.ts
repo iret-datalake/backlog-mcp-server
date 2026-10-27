@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getNotifications } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { NotificationSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 
 const getNotificationsSchema = buildToolSchema((t) => ({
   minId: z
@@ -26,11 +28,11 @@ const getNotificationsSchema = buildToolSchema((t) => ({
 }));
 
 export const getNotificationsTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getNotificationsSchema>,
-  (typeof NotificationSchema)['shape']
+  Entity.Notification.Notification
 > => {
   return {
     name: 'get_notifications',
@@ -39,9 +41,25 @@ export const getNotificationsTool = (
       'Returns list of notifications'
     ),
     schema: z.object(getNotificationsSchema(t)),
-    outputSchema: NotificationSchema,
+    returnsList: true,
+    outputFields: outputFields<Entity.Notification.Notification>()([
+      'id',
+      'alreadyRead',
+      'reason',
+      'resourceAlreadyRead',
+      'project',
+      'issue',
+      'comment',
+      'pullRequest',
+      'pullRequestComment',
+      'document',
+      'documentComment',
+      'documentCommentReply',
+      'sender',
+      'created',
+    ]),
     handler: async ({ minId, maxId, count, order }) =>
-      backlog.getNotifications({
+      getNotifications(backlog, {
         minId,
         maxId,
         count,

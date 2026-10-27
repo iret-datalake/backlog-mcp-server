@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { Backlog } from 'backlog-js';
+import type { Entity } from 'backlog-js';
+import { getPullRequestComments } from 'backlog-js';
+import type { Client } from 'backlog-js';
 import { buildToolSchema, ToolDefinition } from '../types/tool.js';
-import { TranslationHelper } from '../createTranslationHelper.js';
-import { PullRequestCommentSchema } from '../types/zod/backlogOutputDefinition.js';
+import { outputFields } from '../types/outputFields.js';
+import { DescriptionHelper } from '../createDescriptionHelper.js';
 import { resolveIdOrKey, resolveIdOrName } from '../utils/resolveIdOrKey.js';
 
 const getPullRequestCommentsSchema = buildToolSchema((t) => ({
@@ -65,11 +67,11 @@ const getPullRequestCommentsSchema = buildToolSchema((t) => ({
 }));
 
 export const getPullRequestCommentsTool = (
-  backlog: Backlog,
-  { t }: TranslationHelper
+  backlog: Client,
+  { t }: DescriptionHelper
 ): ToolDefinition<
   ReturnType<typeof getPullRequestCommentsSchema>,
-  (typeof PullRequestCommentSchema)['shape']
+  Entity.PullRequest.Comment
 > => {
   return {
     name: 'get_pull_request_comments',
@@ -78,7 +80,17 @@ export const getPullRequestCommentsTool = (
       'Returns list of comments for a pull request'
     ),
     schema: z.object(getPullRequestCommentsSchema(t)),
-    outputSchema: PullRequestCommentSchema,
+    returnsList: true,
+    outputFields: outputFields<Entity.PullRequest.Comment>()([
+      'id',
+      'content',
+      'changeLog',
+      'createdUser',
+      'created',
+      'updated',
+      'stars',
+      'notifications',
+    ]),
     handler: async ({
       projectId,
       projectKey,
@@ -103,7 +115,8 @@ export const getPullRequestCommentsTool = (
       if (!repoResult.ok) {
         throw repoResult.error;
       }
-      return backlog.getPullRequestComments(
+      return getPullRequestComments(
+        backlog,
         result.value,
         String(repoResult.value),
         number,
